@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yam-arena"
+version = "0.1.0"
+description = "Bimanual I2RT YAM embodiment for Isaac Lab-Arena 0.3.1 (Isaac Lab 3.0, Isaac Sim 6.1) and its Inspect Robots wrapper"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Apache-2.0 (code); MIT (assets/yam, see yam_arena/assets/yam/LICENSE.i2rt)" }
+# Isaac Sim, Isaac Lab and Isaac Lab-Arena are not PyPI dependencies: install this editable into
+# the Arena 0.3.1 venv. Editable matters: the URDF, meshes and converted USD are read from the
+# checkout's yam_arena/assets/ directory.
+dependencies = [
+    "numpy",
+    "inspect-robots>=0.60",
+    # Pinned: the wrapper reuses its observation/action contract and imports its private
+    # joint guide (_DOCS_JOINTS).
+    "inspect-robots-yam==0.37.0",
+]
+
+[tool.setuptools]
+packages = ["yam_arena"]
+
+[tool.setuptools.package-data]
+yam_arena = ["assets/yam/**/*"]
+
+[project.entry-points."inspect_robots.embodiments"]
+yam_arena = "yam_arena.inspect_embodiment:yam_arena_embodiment"

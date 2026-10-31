@@ -1,0 +1,6 @@
+__pycache__/
+*.egg-info/
+/out/
+.venv/
+.coverage
+.DS_Store
