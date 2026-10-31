@@ -29,7 +29,6 @@ from inspect_robots import Scene
 from inspect_robots.embodiment import RESETTABLE, SEEDABLE, EmbodimentBase, EmbodimentInfo
 from inspect_robots.types import Observation, StepResult
 from inspect_robots_yam.config import DEFAULT_CAMERAS, action_box, observation_space
-from inspect_robots_yam.embodiment import _DOCS_JOINTS  # the real rig's joint guide; holds for the sim too
 from inspect_robots_yam.packing import ARM_DOF, STATE_KEY, pack, split
 
 from yam_arena import YAM_URDF
@@ -46,8 +45,24 @@ OBJECT_JITTER = 0.03
 # Seconds Kit gets to shut down at interpreter exit before the process is ended anyway.
 CLOSE_TIMEOUT_S = 30.0
 
+JOINT_GUIDE = """Two identical 6-DoF arms, prefixed left_ and right_, each with a parallel-jaw gripper.
+Each arm has its own base frame: +x forward (where the gripper points at all-zero joints), +y left,
++z up. Joints and their positive direction, the same on both arms:
+- j0: base yaw about vertical; positive turns the arm counterclockwise seen from above.
+- j1: shoulder pitch; 0 holds the upper arm level and pointing back (its lower limit), about 1.57
+  points it straight up and about 3.14 level and forward.
+- j2: elbow; 0 folds the forearm back against the upper arm (its lower limit), positive opens it.
+- j3: wrist pitch, parallel to the elbow; positive tilts the gripper up.
+- j4: wrist yaw; positive swings the gripper to the arm's right seen from above, the opposite
+  sense to j0.
+- j5: wrist roll about the gripper's pointing axis; positive turns it clockwise seen from behind.
+- gripper: 0 is closed, 1 is open (about 9.4 cm between the jaws).
+Upper arm 0.26 m, forearm 0.25 m, wrist to grasp point 0.25 m. At all-zero joints the arm is
+folded low with the gripper pointing forward. While it is folded, one joint can move the gripper
+in unexpected ways: move in small steps and check the observation after each."""
+
 DOCS = (
-    _DOCS_JOINTS
+    JOINT_GUIDE
     + """
 
 Simulated rig (Isaac Lab-Arena 0.3.1, PhysX): both arms are mounted on the near edge of a table

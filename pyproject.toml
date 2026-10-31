@@ -15,9 +15,7 @@ license = { text = "Apache-2.0 (code); MIT (assets/yam, see yam_arena/assets/yam
 dependencies = [
     "numpy",
     "inspect-robots>=0.60",
-    # Pinned: the wrapper reuses its observation/action contract and imports its private
-    # joint guide (_DOCS_JOINTS).
-    "inspect-robots-yam==0.37.0",
+    "inspect-robots-yam>=0.6",
 ]
 
 [tool.setuptools]
