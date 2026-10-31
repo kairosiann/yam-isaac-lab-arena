@@ -8,3 +8,6 @@ __pycache__/
 .ruff_cache/
 .coverage
 .DS_Store
+# Written next to the USD by Isaac Lab's URDF converter (scripts/convert_usd.py); unused at runtime.
+yam_arena/assets/yam/usd/config.yaml
+yam_arena/assets/yam/usd/.asset_hash

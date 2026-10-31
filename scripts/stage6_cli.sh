@@ -1,12 +1,12 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Stage 6, CLI half: inspect-robots sees `yam_arena`; the built-in non-LLM policies are
 # incompatible with it; and, only if OPENROUTER_API_KEY is already set, ONE 3-step agent run.
-# Run inside the Arena venv:  bash scripts/stage6_cli.sh [out_dir]
-OUT=${1:-/data/arena031/out/yam-arena}
+# Run inside the Arena venv:  bash scripts/stage6_cli.sh [out_dir]   (default: out/ in this checkout)
+OUT=${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/out}
 mkdir -p "$OUT/ir-logs"
 echo "--- inspect-robots list embodiments"
 inspect-robots list embodiments
-if inspect-robots list embodiments | grep -qE '^\s*-\s*yam_arena$'; then echo "PASS: yam_arena listed"; else echo "FAIL: yam_arena not listed"; fi
+if inspect-robots list embodiments | grep -qE '^[[:space:]]*-[[:space:]]+yam_arena$'; then echo "PASS: yam_arena listed"; else echo "FAIL: yam_arena not listed"; fi
 echo "--- inspect-robots list policies"
 inspect-robots list policies
 echo "--- inspect-robots doctor --embodiment yam_arena"

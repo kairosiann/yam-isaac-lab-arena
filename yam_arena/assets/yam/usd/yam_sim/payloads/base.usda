@@ -4,7 +4,7 @@
         string creator = "URDF USD Converter v0.3.2"
     }
     defaultPrim = "yam"
-    doc = """Generated from Composed Stage of root layer /data/arena031/yam-arena/yam_arena/assets/yam/usd/yam_sim/payloads/base.usd
+    doc = """Generated from Composed Stage of root layer yam_arena/assets/yam/usd/yam_sim/payloads/base.usd
 """
     endTimeCode = 1000000
     kilogramsPerUnit = 1

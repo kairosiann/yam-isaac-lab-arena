@@ -1,6 +1,6 @@
 """Stage 4: full tabletop scene, top-camera collider, and a cube grasp.
 
-    python scripts/stage4_scene.py --out /data/arena031/out/yam-arena [--camera-mast]
+    python scripts/stage4_scene.py [--out DIR] [--camera-mast]
 
 Part A, scene: table, cube, plate, dome light, ground, and the new static D435 collider
 (90 x 25 x 25 mm) at the top camera. Objects must settle on the table.

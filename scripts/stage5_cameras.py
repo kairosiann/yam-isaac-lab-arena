@@ -1,6 +1,6 @@
 """Stage 5: the three policy cameras render RGB, and the wrist cameras follow the grippers.
 
-    python scripts/stage5_cameras.py --out /data/arena031/out/yam-arena [--wrist-mount link|follow]
+    python scripts/stage5_cameras.py [--out DIR] [--wrist-mount link|follow]
 
 Replays the start of the 2.3 contact demo (both arms from READY to hover over the cube and the
 plate) and, at the times the 2.3 screenshots were taken (view_scene.py saved every 120 physics
@@ -25,7 +25,7 @@ sys.path.insert(0, str(ROOT))
 from yam_arena.checks import Checks
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--out", type=Path, default=Path("/data/arena031/out/yam-arena"))
+parser.add_argument("--out", type=Path, default=ROOT / "out")
 parser.add_argument("--wrist-mount", choices=("link", "follow"), default="link")
 parser.add_argument("--obs-size", type=int, default=224)
 args = parser.parse_args()

@@ -1,6 +1,6 @@
 """Stage 6: the ``yam_arena`` Inspect Robots embodiment.
 
-    python scripts/stage6_inspect.py --out /data/arena031/out/yam-arena
+    python scripts/stage6_inspect.py [--out DIR]
 
 1. Contract, without starting Isaac: the entry point resolves; 14-D action box with the URDF
    joint limits and 0..1 grippers; 14-D ``joint_pos`` state; three 224x224 RGB cameras; the same
@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 from yam_arena.checks import Checks
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--out", type=Path, default=Path("/data/arena031/out/yam-arena"))
+parser.add_argument("--out", type=Path, default=ROOT / "out")
 parser.add_argument("--steps", type=int, default=10)
 args = parser.parse_args()
 checks = Checks("stage6_inspect", args.out)

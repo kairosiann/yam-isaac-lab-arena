@@ -1,6 +1,6 @@
 """Stage 3: both YAM arms (`left_robot` / `right_robot`), 14-D action, arm-arm contact.
 
-    python scripts/stage3_bimanual.py --out /data/arena031/out/yam-arena
+    python scripts/stage3_bimanual.py [--out DIR]
 
 Checks:
   - two fixed-base articulations; action manager terms [left_arm, left_gripper, right_arm,

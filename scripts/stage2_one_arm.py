@@ -1,6 +1,6 @@
 """Stage 2: one YAM arm loads in Arena (NoTask), steps, and holds the READY pose.
 
-    python scripts/stage2_one_arm.py --out /data/arena031/out/yam-arena
+    python scripts/stage2_one_arm.py [--out DIR]
 
 Builds the yam_bimanual embodiment with only the left arm (scene key `left_robot`) on the
 table, no objects, through ArenaEnvBuilder(solve_relations=False). Checks:
