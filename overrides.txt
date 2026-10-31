@@ -1,0 +1,2 @@
+# Isaac Sim ships cv2 (opencv-python-headless-noffmpeg); never install a second owner of cv2.
+opencv-python-headless ; sys_platform == "never"
