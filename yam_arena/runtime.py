@@ -11,7 +11,7 @@ from yam_arena.constants import ARM_JOINTS, PAD_TIP_PAST_TCP, TCP_OFFSET
 def link_poses(robot, env_index: int = 0) -> dict[str, np.ndarray]:
     """4x4 world pose of every link of an articulation."""
     poses = robot.data.body_link_pose_w.torch[env_index].cpu().numpy()
-    return {name: pose7_to_matrix(p) for name, p in zip(robot.body_names, poses)}
+    return {name: pose7_to_matrix(p) for name, p in zip(robot.body_names, poses, strict=True)}
 
 
 def tcp_world(robot, env_index: int = 0, past_tcp: float = 0.0) -> np.ndarray:
@@ -32,4 +32,4 @@ def arm_q(robot, env_index: int = 0) -> np.ndarray:
 def contact_forces(sensor, env_index: int = 0) -> dict[str, float]:
     """|net normal contact force| [N] per sensed body (PhysX reports normal forces only)."""
     forces = sensor.data.net_normal_forces_w.torch[env_index].cpu().numpy()
-    return {name: float(np.linalg.norm(f)) for name, f in zip(sensor.body_names, forces)}
+    return {name: float(np.linalg.norm(f)) for name, f in zip(sensor.body_names, forces, strict=True)}

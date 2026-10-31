@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from yam_arena.checks import Checks  # noqa: E402
+from yam_arena.checks import Checks
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--samples", type=int, default=3000, help="Visual surface points probed per link.")
@@ -37,11 +37,11 @@ parser.add_argument("--out", type=Path, default=None)
 args = parser.parse_args()
 checks = Checks("check_collision", args.out)
 
-from isaaclab.app import AppLauncher  # noqa: E402
+from isaaclab.app import AppLauncher
 
 app = AppLauncher(headless=True).app
 
-import numpy as np  # noqa: E402
+import numpy as np
 
 ROBOT = "/World/Yam"
 
@@ -103,14 +103,17 @@ def main():
 
     sq = omni.physx.get_physx_scene_query_interface()
     rng = np.random.default_rng(0)
-    print(f"\n{'link':10s} {'match':>6s} {'bulge':>6s} {'inset':>6s} {'miss':>6s}   err p5/p50/p95 mm   other-link hits", flush=True)
+    print(
+        f"\n{'link':10s} {'match':>6s} {'bulge':>6s} {'inset':>6s} {'miss':>6s}   err p5/p50/p95 mm   other-link hits",
+        flush=True,
+    )
     table = {}
     for link in sorted(k for k in visuals if k):
         vis = trimesh.util.concatenate(visuals[link])
         pts, face = trimesh.sample.sample_surface(vis, args.samples, seed=int(rng.integers(1 << 31)))
         normals = vis.face_normals[face]
         errs, others, origins = [], {}, []
-        for p, n in zip(pts, normals):
+        for p, n in zip(pts, normals, strict=True):
             hits = []
 
             def report(h, hits=hits):
@@ -136,22 +139,35 @@ def main():
         inside = vis.contains(origins)
         errs = (vis_hit - np.array(errs))[~inside]
         hit = errs[~np.isnan(errs)]
-        frac = lambda m: 100 * m.sum() / max(1, len(errs))  # noqa: E731
+        n_rays = max(1, len(errs))
         pct = np.percentile(hit * 1000, [5, 50, 95]) if len(hit) else [np.nan] * 3
-        row = dict(match=frac(np.abs(hit) <= args.tol), bulge=frac(hit > args.tol), inset=frac(hit < -args.tol),
-                   miss=frac(np.isnan(errs)), p5=pct[0], p50=pct[1], p95=pct[2], skipped=int(inside.sum()))
+        row = dict(
+            match=100 * (np.abs(hit) <= args.tol).sum() / n_rays,
+            bulge=100 * (hit > args.tol).sum() / n_rays,
+            inset=100 * (hit < -args.tol).sum() / n_rays,
+            miss=100 * np.isnan(errs).sum() / n_rays,
+            p5=pct[0],
+            p50=pct[1],
+            p95=pct[2],
+            skipped=int(inside.sum()),
+        )
         table[link] = {k: round(float(v), 2) for k, v in row.items()}
-        print(f"{link:10s} {row['match']:5.1f}% {row['bulge']:5.1f}% {row['inset']:5.1f}% {row['miss']:5.1f}%"
-              f"   {pct[0]:6.1f}/{pct[1]:5.1f}/{pct[2]:5.1f}     {others or ''}"
-              + (f"  ({inside.sum()} rays skipped: start inside link)" if inside.any() else ""), flush=True)
+        print(
+            f"{link:10s} {row['match']:5.1f}% {row['bulge']:5.1f}% {row['inset']:5.1f}% {row['miss']:5.1f}%"
+            f"   {pct[0]:6.1f}/{pct[1]:5.1f}/{pct[2]:5.1f}     {others or ''}"
+            + (f"  ({inside.sum()} rays skipped: start inside link)" if inside.any() else ""),
+            flush=True,
+        )
     checks.note("fit table", table)
     checks.check("all 9 links probed", len(table) == 9, str(sorted(table)))
     worst_miss = max(r["miss"] for r in table.values())
-    checks.check("every link's colliders are hit (miss < 5% per link)", worst_miss < 5.0, f"worst miss {worst_miss:.1f}%")
+    checks.check(
+        "every link's colliders are hit (miss < 5% per link)", worst_miss < 5.0, f"worst miss {worst_miss:.1f}%"
+    )
 
 
 try:
     main()
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     checks.error("check_collision", exc)
 checks.finish()

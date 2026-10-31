@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from yam_arena.checks import Checks  # noqa: E402
+from yam_arena.checks import Checks
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--out", type=Path, default=None)
@@ -29,16 +29,16 @@ parser.add_argument("--hold-s", type=float, default=3.0)
 args = parser.parse_args()
 checks = Checks("stage2_one_arm", args.out)
 
-from isaaclab.app import AppLauncher  # noqa: E402
+from isaaclab.app import AppLauncher
 
 app = AppLauncher(headless=True).app
 
-import numpy as np  # noqa: E402
-import torch  # noqa: E402
+import numpy as np
+import torch
 
-from yam_arena import YAM_URDF  # noqa: E402
-from yam_arena.analysis import fk_errors  # noqa: E402
-from yam_arena.constants import (  # noqa: E402
+from yam_arena import YAM_URDF
+from yam_arena.analysis import fk_errors
+from yam_arena.constants import (
     ALL_JOINTS,
     ARM_JOINTS,
     DECIMATION,
@@ -48,7 +48,7 @@ from yam_arena.constants import (  # noqa: E402
     PHYSICS_DT,
     READY,
 )
-from yam_arena.urdf import parse_joints  # noqa: E402
+from yam_arena.urdf import parse_joints
 
 TEST_Q = [0.6, 1.4, 0.9, -0.4, 0.5, 0.8]  # asymmetric, every joint non-zero, clear of the table
 HOLD_TOL_RAD = 0.01  # holding READY from an exact start: gravity compensation leaves no error
@@ -74,7 +74,7 @@ def hold(env, robot, q_arm, grip, seconds):
 
 def fk_check(label, robot):
     q = robot.data.joint_pos.torch[0].cpu().numpy()
-    qd = dict(zip(robot.joint_names, q.tolist()))
+    qd = dict(zip(robot.joint_names, q.tolist(), strict=True))
     errs = fk_errors(
         robot.body_names,
         robot.data.body_link_pose_w.torch[0].cpu().numpy(),
@@ -101,8 +101,11 @@ def main():
     base = env.unwrapped
     robot = base.scene["left_robot"]
 
-    checks.check("articulations == {left_robot}", set(base.scene.articulations) == {"left_robot"},
-                 str(sorted(base.scene.articulations)))
+    checks.check(
+        "articulations == {left_robot}",
+        set(base.scene.articulations) == {"left_robot"},
+        str(sorted(base.scene.articulations)),
+    )
     checks.check("is_fixed_base", bool(robot.is_fixed_base), f"is_fixed_base={robot.is_fixed_base}")
     checks.check("joint names joint1..joint8", list(robot.joint_names) == ALL_JOINTS, str(robot.joint_names))
     checks.note("body_names", list(robot.body_names))
@@ -111,7 +114,9 @@ def main():
     checks.check("action dim == 7", dim == 7, f"dim={dim} terms={base.action_manager.active_terms}")
     checks.check(
         "240 Hz physics, 24 substeps (10 Hz control)",
-        abs(base.physics_dt - PHYSICS_DT) < 1e-9 and base.cfg.decimation == DECIMATION and abs(base.step_dt - 0.1) < 1e-9,
+        abs(base.physics_dt - PHYSICS_DT) < 1e-9
+        and base.cfg.decimation == DECIMATION
+        and abs(base.step_dt - 0.1) < 1e-9,
         f"physics_dt={base.physics_dt:.6f} decimation={base.cfg.decimation} step_dt={base.step_dt:.4f}"
         f" physics_handles_decimation={getattr(base, '_physics_handles_decimation', None)}",
     )
@@ -151,7 +156,11 @@ def main():
     checks.check("hold READY: at rest (|qd| < 0.01 rad/s)", vmax < 0.01, f"max |qd| {vmax:.5f}")
     root = robot.data.root_link_pose_w.torch[0, :3].cpu().numpy() - base.scene.env_origins[0].cpu().numpy()
     drift = np.linalg.norm(root - np.array(LEFT_BASE_POS))
-    checks.check("base stays at its mount (< 0.1 mm)", drift < 1e-4, f"base at {np.round(root, 5).tolist()}, drift {drift * 1000:.4f} mm")
+    checks.check(
+        "base stays at its mount (< 0.1 mm)",
+        drift < 1e-4,
+        f"base at {np.round(root, 5).tolist()}, drift {drift * 1000:.4f} mm",
+    )
     fk_check("READY", robot)
 
     # -- second pose: tracking and FK -----------------------------------------------------
@@ -180,6 +189,6 @@ def main():
 
 try:
     main()
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     checks.error("stage 2", exc)
 checks.finish()

@@ -18,8 +18,5 @@ YAM_USD = YAM_USD_DIR / "yam_sim" / "yam_sim.usda"
 def require_usd() -> Path:
     """Return the converted YAM USD, or explain how to make it."""
     if not YAM_USD.is_file():
-        raise FileNotFoundError(
-            f"{YAM_USD} does not exist. Convert the URDF first:\n"
-            "    python scripts/convert_usd.py"
-        )
+        raise FileNotFoundError(f"{YAM_USD} does not exist. Convert the URDF first:\n    python scripts/convert_usd.py")
     return YAM_USD

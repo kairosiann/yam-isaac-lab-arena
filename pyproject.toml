@@ -26,3 +26,22 @@ yam_arena = ["assets/yam/**/*"]
 
 [project.entry-points."inspect_robots.embodiments"]
 yam_arena = "yam_arena.inspect_embodiment:yam_arena_embodiment"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+# Isaac Lab configclasses and Arena assets declare mutable class attributes by design.
+ignore = ["RUF012"]
+
+[tool.ruff.lint.per-file-ignores]
+# The stage scripts start Isaac Sim before importing anything that needs it.
+"scripts/*" = ["E402"]
+
+[tool.ruff.lint.flake8-comprehensions]
+allow-dict-calls-with-keyword-arguments = true
+
+[tool.ruff.lint.isort]
+known-first-party = ["yam_arena"]

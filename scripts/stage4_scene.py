@@ -27,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from yam_arena.checks import Checks  # noqa: E402
+from yam_arena.checks import Checks
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--out", type=Path, default=None)
@@ -35,32 +35,31 @@ parser.add_argument("--camera-mast", action="store_true", help="Also add the (gu
 args = parser.parse_args()
 checks = Checks("stage4_scene", args.out)
 
-from isaaclab.app import AppLauncher  # noqa: E402
+from isaaclab.app import AppLauncher
 
 app = AppLauncher(headless=True).app
 
-import numpy as np  # noqa: E402
-import torch  # noqa: E402
+import numpy as np
+import torch
 
-from yam_arena import ik  # noqa: E402
-from yam_arena.analysis import fk_link_poses_world, hulls_to_box, pose7_to_matrix, world_hulls  # noqa: E402
-from yam_arena.constants import (  # noqa: E402
+from yam_arena import ik
+from yam_arena.analysis import fk_link_poses_world, hulls_to_box, pose7_to_matrix, world_hulls
+from yam_arena.constants import (
     CUBE_POS,
     CUBE_SIZE,
     D435_BOX_POS,
     D435_BOX_ROT_XYZW,
     D435_SIZE_XYZ,
-    FINGER_OPEN,
     LEFT_BASE_POS,
     PLATE_HEIGHT,
     PLATE_POS,
     READY,
     TABLE_HEIGHT,
 )
-from yam_arena.demo import make_plans  # noqa: E402
-from yam_arena.ik import smoothstep  # noqa: E402
-from yam_arena.runtime import arm_q, contact_forces, link_poses, pad_tips_world, tcp_world  # noqa: E402
-from yam_arena.urdf import quat_xyzw_to_matrix  # noqa: E402
+from yam_arena.demo import make_plans
+from yam_arena.ik import smoothstep
+from yam_arena.runtime import arm_q, contact_forces, link_poses, pad_tips_world, tcp_world
+from yam_arena.urdf import quat_xyzw_to_matrix
 
 BOX_ROT = quat_xyzw_to_matrix(np.array(D435_BOX_ROT_XYZW))
 # Seed for the reach into the camera body: joint1 turned back toward the camera.
@@ -90,8 +89,11 @@ def part_a(env, origin):
         import omni.usd
 
         stage = omni.usd.get_context().get_stage()
-    checks.check("rigid objects == {cube, plate}", set(base.scene.rigid_objects) == {"cube", "plate"},
-                 str(sorted(base.scene.rigid_objects)))
+    checks.check(
+        "rigid objects == {cube, plate}",
+        set(base.scene.rigid_objects) == {"cube", "plate"},
+        str(sorted(base.scene.rigid_objects)),
+    )
     prim = stage.GetPrimAtPath("/World/envs/env_0/d435")
     from pxr import Usd, UsdGeom
 
@@ -111,19 +113,23 @@ def part_a(env, origin):
             ext = UsdGeom.Cube(c).GetSizeAttr().Get() * np.linalg.norm(rel[:3, :3], axis=0)
             extent_attr = UsdGeom.Boundable(c).GetExtentAttr().Get()
         ok_size = ext is not None and np.allclose(ext, D435_SIZE_XYZ, atol=1e-5)
-        checks.check("D435 collider: static collision prim at the top camera, 25x90x25 mm (box axes)",
-                     has_col and not has_rb and pos_err < 1e-4 and ok_size,
-                     f"collision={has_col} rigid_body={has_rb} pos err {pos_err * 1000:.3f} mm;"
-                     f" edges {None if ext is None else np.round(ext * 1000, 2).tolist()} mm (cube extent attr {extent_attr})")
+        checks.check(
+            "D435 collider: static collision prim at the top camera, 25x90x25 mm (box axes)",
+            has_col and not has_rb and pos_err < 1e-4 and ok_size,
+            f"collision={has_col} rigid_body={has_rb} pos err {pos_err * 1000:.3f} mm;"
+            f" edges {None if ext is None else np.round(ext * 1000, 2).tolist()} mm (cube extent attr {extent_attr})",
+        )
     else:
         checks.check("D435 collider prim exists", False, "no prim at /World/envs/env_0/d435")
     act(env, [*READY, 1.0], [*READY, 1.0], n=10)
     cube, plate = base.scene["cube"], base.scene["plate"]
     cz, pz = obj_pos(cube, origin)[2], obj_pos(plate, origin)[2]
-    checks.check("cube and plate settle on the table (1 s)",
-                 abs(cz - CUBE_POS[2]) < 0.002 and abs(pz - PLATE_POS[2]) < 0.002 and obj_speed(cube) < 0.005,
-                 f"cube z {cz:.4f} (expect {CUBE_POS[2]:.4f}), plate z {pz:.4f} (expect {PLATE_POS[2]:.4f}),"
-                 f" cube speed {obj_speed(cube) * 1000:.2f} mm/s")
+    checks.check(
+        "cube and plate settle on the table (1 s)",
+        abs(cz - CUBE_POS[2]) < 0.002 and abs(pz - PLATE_POS[2]) < 0.002 and obj_speed(cube) < 0.005,
+        f"cube z {cz:.4f} (expect {CUBE_POS[2]:.4f}), plate z {pz:.4f} (expect {PLATE_POS[2]:.4f}),"
+        f" cube speed {obj_speed(cube) * 1000:.2f} mm/s",
+    )
 
 
 def part_b(env, origin):
@@ -136,8 +142,15 @@ def part_b(env, origin):
     q_d = {f"joint{i + 1}": float(v) for i, v in enumerate(q_goal)} | {"joint7": 0.0, "joint8": 0.0}
     cmd_hulls = world_hulls(fk_link_poses_world(q_d, LEFT_BASE_POS))
     cmd_dist, cmd_link = hulls_to_box(cmd_hulls, D435_BOX_POS, BOX_ROT, D435_SIZE_XYZ)
-    checks.note("D435 reach target", {"q_goal": np.round(q_goal, 3).tolist(), "ik_pos_err_mm": round(pe * 1000, 3),
-                                      "commanded_min_signed_dist_to_box_mm": round(cmd_dist * 1000, 1), "link": cmd_link})
+    checks.note(
+        "D435 reach target",
+        {
+            "q_goal": np.round(q_goal, 3).tolist(),
+            "ik_pos_err_mm": round(pe * 1000, 3),
+            "commanded_min_signed_dist_to_box_mm": round(cmd_dist * 1000, 1),
+            "link": cmd_link,
+        },
+    )
     act(env, [*READY, 0.0], [*READY, 1.0], n=10)  # close the left gripper first
     q0 = arm_q(left)
     n_move, n_hold = 40, 20
@@ -160,17 +173,31 @@ def part_b(env, origin):
             first_contact = (k + 1) * base.step_dt
     tcp_d = float(np.linalg.norm(tcp_world(left) - box_c))
     q_err = np.abs(arm_q(left) - q_goal)
-    checks.note("D435 reach achieved", {
-        "min_signed_dist_to_box_mm (negative = inside)": round(min_d * 1000, 2), "closest_link": min_link,
-        "tcp_to_box_centre_mm": round(tcp_d * 1000, 1), "peak_contact_N": round(peak_f, 1), "peak_contact_link": peak_link,
-        "first_contact_s": first_contact, "final_joint_error_rad": np.round(q_err, 3).tolist()})
-    checks.check("reach would pass through the camera body without the collider", cmd_dist < -0.01,
-                 f"commanded min signed distance {cmd_dist * 1000:.1f} mm (negative = inside; the box is 25 mm thick)")
-    checks.check("D435 collider blocks the arm (max penetration <= 3 mm)", min_d > -0.003,
-                 f"min signed distance {min_d * 1000:.2f} mm ({min_link}); TCP stopped {tcp_d * 1000:.1f} mm from box centre")
+    checks.note(
+        "D435 reach achieved",
+        {
+            "min_signed_dist_to_box_mm (negative = inside)": round(min_d * 1000, 2),
+            "closest_link": min_link,
+            "tcp_to_box_centre_mm": round(tcp_d * 1000, 1),
+            "peak_contact_N": round(peak_f, 1),
+            "peak_contact_link": peak_link,
+            "first_contact_s": first_contact,
+            "final_joint_error_rad": np.round(q_err, 3).tolist(),
+        },
+    )
+    checks.check(
+        "reach would pass through the camera body without the collider",
+        cmd_dist < -0.01,
+        f"commanded min signed distance {cmd_dist * 1000:.1f} mm (negative = inside; the box is 25 mm thick)",
+    )
+    checks.check(
+        "D435 collider blocks the arm (max penetration <= 3 mm)",
+        min_d > -0.003,
+        f"min signed distance {min_d * 1000:.2f} mm ({min_link}); TCP stopped {tcp_d * 1000:.1f} mm from box centre",
+    )
     checks.check("arm-camera contact force > 1 N", peak_f > 1.0, f"peak {peak_f:.1f} N on {peak_link}")
-    from pxr import UsdGeom
     import omni.usd
+    from pxr import UsdGeom
 
     prim = omni.usd.get_context().get_stage().GetPrimAtPath("/World/envs/env_0/d435")
     xf = np.array(UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0)).T
@@ -202,7 +229,7 @@ def part_c(env, origin):
     touched: dict[str, float] = {}
     lowest_tip = 9.0
     cube_peak, cube_min_z, cube_vmax, nan = -9.0, 9.0, 0.0, False
-    hold_rel, ik_left, ik_right = [], None, None
+    hold_rel = []
     lplan, rplan = make_plans(hold_s=1.5)
     steps = round((max(lplan.duration, rplan.duration) + 1.0) / base.step_dt)
     for k in range(steps):
@@ -234,37 +261,69 @@ def part_c(env, origin):
 
     print("[stage4_scene] joint      worst limit overshoot   peak |vel| / sim limit", flush=True)
     for i, n in enumerate(names):
-        print(f"[stage4_scene] {n:8s}   {max(0.0, float(over[i])):8.4f}            {peak_vel[i]:6.3f} / {vel_lim[i]:.3f}", flush=True)
+        print(
+            f"[stage4_scene] {n:8s}   {max(0.0, float(over[i])):8.4f}            {peak_vel[i]:6.3f} / {vel_lim[i]:.3f}",
+            flush=True,
+        )
     checks.note("peak contact force per link (N)", {k: round(v, 1) for k, v in sorted(touched.items())})
-    checks.note("ik_worst (left mm/deg, right mm/deg)",
-                [round(lplan.worst_ik_mm, 3), round(lplan.worst_ik_deg, 3), round(rplan.worst_ik_mm, 3), round(rplan.worst_ik_deg, 3)])
+    checks.note(
+        "ik_worst (left mm/deg, right mm/deg)",
+        [
+            round(lplan.worst_ik_mm, 3),
+            round(lplan.worst_ik_deg, 3),
+            round(rplan.worst_ik_mm, 3),
+            round(rplan.worst_ik_deg, 3),
+        ],
+    )
     lift = cube_peak - cube0[2]
     checks.check("cube lifted > 10 cm (fingers grip the cube)", lift > 0.1, f"lifted {lift * 100:.1f} cm")
     plate_top = TABLE_HEIGHT + PLATE_HEIGHT
     sink = plate_top - lowest_tip
-    checks.check("right fingertips stop on the plate (penetration < 4 mm)", sink < 0.004,
-                 f"lowest tip z {lowest_tip:.4f}, plate top {plate_top:.4f}, commanded 10 mm below; penetration {max(0.0, sink) * 1000:.1f} mm")
+    checks.check(
+        "right fingertips stop on the plate (penetration < 4 mm)",
+        sink < 0.004,
+        f"lowest tip z {lowest_tip:.4f}, plate top {plate_top:.4f}, commanded 10 mm below;"
+        f" penetration {max(0.0, sink) * 1000:.1f} mm",
+    )
     rel = np.array(hold_rel)
     if len(rel) >= 3:
         jitter = rel.std(axis=0).max()
         slip = np.linalg.norm(rel[-1] - rel[0])
-        checks.check("cube steady in the gripper while lifted (std < 1 mm, slip < 3 mm over 1.5 s)",
-                     jitter < 0.001 and slip < 0.003,
-                     f"position std {jitter * 1000:.3f} mm, slip {slip * 1000:.3f} mm over {len(rel)} samples")
+        checks.check(
+            "cube steady in the gripper while lifted (std < 1 mm, slip < 3 mm over 1.5 s)",
+            jitter < 0.001 and slip < 0.003,
+            f"position std {jitter * 1000:.3f} mm, slip {slip * 1000:.3f} mm over {len(rel)} samples",
+        )
     else:
         checks.check("cube hold window sampled", False, f"{len(rel)} samples")
     on_table = abs(cube_final[2] - CUBE_POS[2]) < 0.003
-    checks.check("cube never falls through the table", cube_min_z > TABLE_HEIGHT + CUBE_SIZE / 2 - 0.003,
-                 f"min cube centre z {cube_min_z:.4f} (resting {CUBE_POS[2]:.4f})")
-    checks.check("cube placed and resting on the table", on_table and obj_speed(cube) < 0.01,
-                 f"final {np.round(cube_final, 4).tolist()}, speed {obj_speed(cube) * 1000:.2f} mm/s")
-    checks.check("no blow-up: no NaN, cube speed < 1.5 m/s, joint speeds within sim limits",
-                 not nan and cube_vmax < 1.5 and bool((peak_vel <= vel_lim * 1.05).all()),
-                 f"nan={nan} cube peak speed {cube_vmax:.3f} m/s; peak joint speed {peak_vel.max():.3f} rad/s")
-    checks.check("joint limits respected (overshoot < 0.01)", float(over.max()) < 0.01,
-                 f"worst overshoot {max(0.0, float(over.max())):.5f}")
-    checks.note("cube final / plate displacement", {"cube_final": np.round(cube_final, 4).tolist(),
-                                                    "plate_moved_mm": round(float(np.linalg.norm(plate_final - plate0)) * 1000, 1)})
+    checks.check(
+        "cube never falls through the table",
+        cube_min_z > TABLE_HEIGHT + CUBE_SIZE / 2 - 0.003,
+        f"min cube centre z {cube_min_z:.4f} (resting {CUBE_POS[2]:.4f})",
+    )
+    checks.check(
+        "cube placed and resting on the table",
+        on_table and obj_speed(cube) < 0.01,
+        f"final {np.round(cube_final, 4).tolist()}, speed {obj_speed(cube) * 1000:.2f} mm/s",
+    )
+    checks.check(
+        "no blow-up: no NaN, cube speed < 1.5 m/s, joint speeds within sim limits",
+        not nan and cube_vmax < 1.5 and bool((peak_vel <= vel_lim * 1.05).all()),
+        f"nan={nan} cube peak speed {cube_vmax:.3f} m/s; peak joint speed {peak_vel.max():.3f} rad/s",
+    )
+    checks.check(
+        "joint limits respected (overshoot < 0.01)",
+        float(over.max()) < 0.01,
+        f"worst overshoot {max(0.0, float(over.max())):.5f}",
+    )
+    checks.note(
+        "cube final / plate displacement",
+        {
+            "cube_final": np.round(cube_final, 4).tolist(),
+            "plate_moved_mm": round(float(np.linalg.norm(plate_final - plate0)) * 1000, 1),
+        },
+    )
 
 
 def main():
@@ -279,12 +338,12 @@ def main():
     for part in (part_a, part_b, part_c):
         try:
             part(env, origin)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             checks.error(part.__name__, exc)
 
 
 try:
     main()
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     checks.error("stage 4", exc)
 checks.finish()

@@ -21,7 +21,7 @@ UPPER = np.array([_J[n].upper for n in ARM_JOINTS])
 
 def tcp_pose(q: np.ndarray, base_pos=(0.0, 0.0, 0.0)) -> tuple[np.ndarray, np.ndarray]:
     """(position, rotation matrix) of the TCP in the world for arm joints ``q``."""
-    g = forward_kinematics(YAM_URDF, {n: float(v) for n, v in zip(ARM_JOINTS, q)})["gripper"]
+    g = forward_kinematics(YAM_URDF, {n: float(v) for n, v in zip(ARM_JOINTS, q, strict=True)})["gripper"]
     return g[:3, :3] @ np.array(TCP_OFFSET) + g[:3, 3] + np.asarray(base_pos), g[:3, :3]
 
 

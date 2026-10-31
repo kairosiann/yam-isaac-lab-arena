@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from yam_arena.checks import Checks  # noqa: E402
+from yam_arena.checks import Checks
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--out", type=Path, default=Path("/data/arena031/out/yam-arena"))
@@ -34,19 +34,19 @@ checks = Checks(stage_name, args.out)
 img_dir = args.out / stage_name
 img_dir.mkdir(parents=True, exist_ok=True)
 
-from isaaclab.app import AppLauncher  # noqa: E402
+from isaaclab.app import AppLauncher
 
 app = AppLauncher(headless=True, enable_cameras=True).app
 
-import cv2  # noqa: E402
-import numpy as np  # noqa: E402
-import torch  # noqa: E402
-from PIL import Image  # noqa: E402
+import cv2
+import numpy as np
+import torch
+from PIL import Image
 
-from yam_arena.analysis import pose7_to_matrix  # noqa: E402
-from yam_arena.constants import READY, WRIST_CAM_POS, WRIST_CAM_ROT_XYZW  # noqa: E402
-from yam_arena.demo import make_plans  # noqa: E402
-from yam_arena.urdf import quat_xyzw_to_matrix, rotation_angle_deg  # noqa: E402
+from yam_arena.analysis import pose7_to_matrix
+from yam_arena.constants import READY, WRIST_CAM_POS, WRIST_CAM_ROT_XYZW
+from yam_arena.demo import make_plans
+from yam_arena.urdf import quat_xyzw_to_matrix, rotation_angle_deg
 
 POLICY_CAMS = ("top_cam", "left_cam", "right_cam")
 CAPTURE_T = (0.5, 1.0, 1.5, 2.0, 2.5)
@@ -67,8 +67,9 @@ def main():
     from yam_arena.embodiment import BimanualYamEmbodiment
     from yam_arena.scene import make_env
 
-    emb = BimanualYamEmbodiment(enable_cameras=True, overview_cam=True, wrist_cam_mount=args.wrist_mount,
-                                contact_sensors=False)
+    emb = BimanualYamEmbodiment(
+        enable_cameras=True, overview_cam=True, wrist_cam_mount=args.wrist_mount, contact_sensors=False
+    )
     t0 = time.monotonic()
     env = make_env(emb, objects=True, d435_collider=True)
     base = env.unwrapped
@@ -114,31 +115,48 @@ def main():
                 exp_r = g[:3, :3] @ quat_xyzw_to_matrix(np.array(WRIST_CAM_ROT_XYZW))
                 got_p = t_np(cam.data.pos_w)
                 got_r = quat_xyzw_to_matrix(t_np(cam.data.quat_w_ros))
-                frames[tt][f"{side}_pose_err"] = (float(np.linalg.norm(got_p - exp_p) * 1000), rotation_angle_deg(got_r, exp_r))
+                frames[tt][f"{side}_pose_err"] = (
+                    float(np.linalg.norm(got_p - exp_p) * 1000),
+                    rotation_angle_deg(got_r, exp_r),
+                )
     checks.note("mean env.step with 4 cameras (s)", round(float(np.mean(step_times[2:])), 3))
 
     last = frames[max(frames)]
     for name in POLICY_CAMS:
         img = last[name]
         obs = cv2.resize(img, (args.obs_size, args.obs_size))
-        checks.check(f"{name}: {args.obs_size}x{args.obs_size} uint8 RGB, not blank",
-                     obs.shape == (args.obs_size, args.obs_size, 3) and obs.dtype == np.uint8 and img.std() > 5,
-                     f"render {img.shape}, obs {obs.shape} {obs.dtype}, std {img.std():.1f}, mean {img.mean():.1f}")
-    diffs = {f"{a}-{b}": float(np.abs(last[a].astype(int) - last[b].astype(int)).mean())
-             for i, a in enumerate(POLICY_CAMS) for b in POLICY_CAMS[i + 1:]}
-    checks.check("the three cameras see different views", min(diffs.values()) > 5, str({k: round(v, 1) for k, v in diffs.items()}))
+        checks.check(
+            f"{name}: {args.obs_size}x{args.obs_size} uint8 RGB, not blank",
+            obs.shape == (args.obs_size, args.obs_size, 3) and obs.dtype == np.uint8 and img.std() > 5,
+            f"render {img.shape}, obs {obs.shape} {obs.dtype}, std {img.std():.1f}, mean {img.mean():.1f}",
+        )
+    diffs = {
+        f"{a}-{b}": float(np.abs(last[a].astype(int) - last[b].astype(int)).mean())
+        for i, a in enumerate(POLICY_CAMS)
+        for b in POLICY_CAMS[i + 1 :]
+    }
+    checks.check(
+        "the three cameras see different views",
+        min(diffs.values()) > 5,
+        str({k: round(v, 1) for k, v in diffs.items()}),
+    )
     for side in ("left", "right"):
         errs = [frames[t][f"{side}_pose_err"] for t in sorted(frames)]
         worst = (max(e[0] for e in errs), max(e[1] for e in errs))
-        checks.check(f"{side}_cam reported pose sits on its gripper mount (all {len(errs)} captures)",
-                     worst[0] < 1.0 and worst[1] < 0.5, f"worst {worst[0]:.3f} mm / {worst[1]:.3f} deg")
+        checks.check(
+            f"{side}_cam reported pose sits on its gripper mount (all {len(errs)} captures)",
+            worst[0] < 1.0 and worst[1] < 0.5,
+            f"worst {worst[0]:.3f} mm / {worst[1]:.3f} deg",
+        )
         change = float(np.abs(frames[min(frames)][f"{side}_cam"].astype(int) - last[f"{side}_cam"].astype(int)).mean())
-        checks.check(f"{side}_cam image changes as the arm moves (t=0.5 vs 2.5 s)", change > 5, f"mean abs diff {change:.1f}")
+        checks.check(
+            f"{side}_cam image changes as the arm moves (t=0.5 vs 2.5 s)", change > 5, f"mean abs diff {change:.1f}"
+        )
     checks.note("images", str(img_dir))
 
 
 try:
     main()
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     checks.error("stage 5", exc)
 checks.finish()

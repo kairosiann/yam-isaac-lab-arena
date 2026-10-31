@@ -39,10 +39,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from yam_arena import YAM_URDF, YAM_USD, YAM_USD_DIR  # noqa: E402
-from yam_arena.checks import Checks  # noqa: E402
-from yam_arena.constants import ALL_JOINTS, LINKS  # noqa: E402
-from yam_arena.urdf import collision_counts, parse_joints  # noqa: E402
+from yam_arena import YAM_URDF, YAM_USD, YAM_USD_DIR
+from yam_arena.checks import Checks
+from yam_arena.constants import ALL_JOINTS, LINKS
+from yam_arena.urdf import collision_counts, parse_joints
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("--force", action="store_true", help="Re-convert even if the USD exists.")
@@ -52,7 +52,7 @@ args = parser.parse_args()
 
 checks = Checks("stage1_convert_usd", args.out)
 
-from isaaclab.app import AppLauncher  # noqa: E402
+from isaaclab.app import AppLauncher
 
 app = AppLauncher(headless=True).app
 
@@ -90,7 +90,7 @@ ROOT_PROPERTY_PREFIXES = ("physxArticulation:", "newton:selfCollisionEnabled")
 
 def fix_articulation_root() -> None:
     """Move the articulation-root schemas from the `base` rigid body to the default prim."""
-    from pxr import Sdf, Usd, UsdPhysics
+    from pxr import Usd, UsdPhysics
 
     stage = Usd.Stage.Open(str(YAM_USD))
     root_prim = stage.GetDefaultPrim()
@@ -122,8 +122,10 @@ def fix_articulation_root() -> None:
     for name in moved_props:
         old.RemoveProperty(name)
     stage.GetRootLayer().Save()
-    checks.note("fix_articulation_root", {"from": str(old.GetPath()), "to": str(root_prim.GetPath()),
-                                          "schemas": listed, "properties": moved_props})
+    checks.note(
+        "fix_articulation_root",
+        {"from": str(old.GetPath()), "to": str(root_prim.GetPath()), "schemas": listed, "properties": moved_props},
+    )
 
 
 def link_of(prim, rigid_api) -> str | None:
@@ -251,7 +253,9 @@ def check_usd() -> None:
     for p in prims:
         if p.HasAPI(UsdPhysics.RigidBodyAPI) and p.HasAPI(UsdPhysics.MassAPI):
             usd_mass[p.GetName()] = UsdPhysics.MassAPI(p).GetMassAttr().Get()
-    bad = {k: (usd_mass.get(k), v) for k, v in urdf_mass.items() if usd_mass.get(k) is None or abs(usd_mass[k] - v) > 1e-4}
+    bad = {
+        k: (usd_mass.get(k), v) for k, v in urdf_mass.items() if usd_mass.get(k) is None or abs(usd_mass[k] - v) > 1e-4
+    }
     checks.check("link masses match URDF", not bad, f"mismatch={bad}" if bad else f"{len(usd_mass)} links")
 
 
@@ -263,6 +267,6 @@ try:
         else:
             checks.note("conversion", "skipped: USD exists (pass --force to re-convert)")
     check_usd()
-except Exception as exc:  # noqa: BLE001 -- report and still print the summary
+except Exception as exc:
     checks.error("stage 1", exc)
 checks.finish()

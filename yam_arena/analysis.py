@@ -39,7 +39,7 @@ def fk_errors(body_names: list[str], body_poses_w: np.ndarray, root_pose_w: np.n
     fk = forward_kinematics(YAM_URDF, q)
     t_root_inv = np.linalg.inv(pose7_to_matrix(root_pose_w))
     errors = {}
-    for name, pose in zip(body_names, body_poses_w):
+    for name, pose in zip(body_names, body_poses_w, strict=True):
         if name not in fk:
             continue
         sim = t_root_inv @ pose7_to_matrix(pose)
@@ -58,7 +58,8 @@ def read_stl(path: Path) -> np.ndarray:
     """Triangles (n, 3, 3) from a binary or ASCII STL."""
     data = path.read_bytes()
     if data[:5] == b"solid" and b"facet" in data[:400]:
-        verts = [list(map(float, line.split()[1:4])) for line in data.decode().splitlines() if line.strip().startswith("vertex")]
+        lines = data.decode().splitlines()
+        verts = [list(map(float, line.split()[1:4])) for line in lines if line.strip().startswith("vertex")]
         return np.array(verts).reshape(-1, 3, 3)
     (n,) = struct.unpack("<I", data[80:84])
     rec = np.frombuffer(data[84 : 84 + n * 50], dtype=np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("a", "<u2")]))

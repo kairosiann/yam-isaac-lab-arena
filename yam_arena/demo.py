@@ -105,8 +105,12 @@ class ArmPlan:
             goal = np.asarray(w.pos, dtype=float)
             if t < w.duration:
                 s = ik.smoothstep(t / w.duration)
-                return (prev_pos + s * (goal - prev_pos), ik.slerp_matrix(prev_rot, self.down, s),
-                        prev_finger + s * (w.finger - prev_finger), w.label)
+                return (
+                    prev_pos + s * (goal - prev_pos),
+                    ik.slerp_matrix(prev_rot, self.down, s),
+                    prev_finger + s * (w.finger - prev_finger),
+                    w.label,
+                )
             t -= w.duration
             prev_pos, prev_rot, prev_finger = goal, self.down, w.finger
         return prev_pos, prev_rot, prev_finger, "done"
