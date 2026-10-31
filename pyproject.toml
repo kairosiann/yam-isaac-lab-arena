@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Bimanual I2RT YAM for Isaac Lab-Arena 0.3.1, and its Inspect Robots embodiment."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-license = { text = "Apache-2.0 (code); MIT (assets/yam, see yam_arena/assets/yam/LICENSE.i2rt)" }
 authors = [{ name = "yam-arena contributors" }]
 keywords = ["robotics", "simulation", "isaac-lab-arena", "yam", "bimanual", "inspect-robots", "evaluation"]
 classifiers = [

@@ -1,81 +1,166 @@
 # yam-arena
 
-Bimanual [I2RT YAM](https://i2rt.com/products/yam-6-dof-arm) for **Isaac Lab-Arena 0.3.1**
-(Isaac Lab 3.0 EA, Isaac Sim 6.1.0, Python 3.12, PhysX), plus its
-[Inspect Robots](https://github.com/robocurve/inspect-robots) embodiment `yam_arena`.
-It's a port of the Isaac Lab 2.3 package YAM-inspect-Isaac (`yam_sim`), and has the same
-observation and action contract as the real rig's `yam_arms` (inspect-robots-yam 0.37.0).
+Two [I2RT YAM](https://i2rt.com/products/yam-6-dof-arm) arms in
+[Isaac Lab-Arena](https://github.com/isaac-sim/IsaacLab-Arena) 0.3.1 (Isaac Lab 3.0, Isaac Sim 6.1),
+and the [Inspect Robots](https://github.com/robocurve/inspect-robots) embodiment `yam_arena` with the
+same action layout, state and cameras as the real rig's `yam_arms`. Use it to evaluate Dream Labs'
+Dream-1 ([`inspect-robots-dream`](https://github.com/kairosiann/inspect-robots-dream)) or an LLM agent
+on the YAM in simulation. It is a port of
+[YAM-inspect-Isaac](https://github.com/ttpierson/YAM-inspect-Isaac) (`yam_sim`, Isaac Lab 2.3).
+Not affiliated with I2RT, NVIDIA or Dream Labs.
+
+## Quickstart
+
+You need a Linux machine with an NVIDIA RTX GPU (an L40S, for example) and its driver. Isaac Sim
+renders with RT cores, so an A100 or H100 will not do.
+
+Install Arena, this package and the policies:
+
+```bash
+git clone https://github.com/kairosiann/yam-arena && cd yam-arena
+./setup.sh
+source ~/IsaacLab-Arena/yam.env
+```
+
+`setup.sh` clones Arena into `ARENA_DIR` (default `~/IsaacLab-Arena`), installs everything into its
+venv, and is safe to re-run. Start every new shell with `source <ARENA_DIR>/yam.env`.
+
+Save your key from [platform.dreamlabs.ai](https://platform.dreamlabs.ai/api-keys):
+
+```bash
+mkdir -p ~/.dreamlabs && echo 'DREAM_API_KEY=dl_live_...' > ~/.dreamlabs/credentials
+chmod 600 ~/.dreamlabs/credentials
+```
+
+Run Dream-1. The `-E` options give it the control rate and frame size it expects:
+
+```bash
+inspect-robots run --embodiment yam_arena --policy dream \
+  -E control_hz=20 -E cam_width=320 -E cam_height=176 \
+  --instruction "put the red cube on the plate" \
+  --max-steps 1600 --store-frames --log-dir ~/yam-eval/dream
+```
+
+The Dream client installs in Arena's environment, so the policy runs it in-process, without
+`inspect-robots-dream`'s bridge.
+
+Or run a model through OpenRouter:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+inspect-robots run --embodiment yam_arena --policy agent -P model=anthropic/claude-haiku-5.5 \
+  --instruction "put the red cube on the plate" --store-frames --log-dir ~/yam-eval/agent
+```
+
+Serve the trial reports from the VM:
+
+```bash
+inspect-robots view ~/yam-eval/dream --serve
+```
+
+Forward port 8300 to your laptop (`brev port-forward <instance> -p 8300:8300` on Brev, or
+`ssh -L 8300:127.0.0.1:8300 <vm>`) and open http://127.0.0.1:8300. Add `--force` to re-render
+pages written while a run was live. `inspect-robots view <log>.json -o report.html` renders one
+log to a file.
+
+## Embodiment
 
 | | |
 |---|---|
-| Action | 14-D absolute joint targets `[L j1..j6, L grip, R j1..j6, R grip]`, rad; grippers 0 closed .. 1 open; 10 Hz |
-| State `joint_pos` | the same 14-D layout |
-| Cameras | `top_cam` (D435, overhead), `left_cam` / `right_cam` (D405, wrists); rendered 640x360, observed 224x224 RGB |
-| Control | joint PD (i2rt gains) + gravity-compensation feed-forward every 240 Hz substep, 24 substeps per action |
-| Scene | table, red 4 cm cube, white plate, dome light, ground, and a static 90x25x25 mm collider for the top camera's body |
+| Action | 14 absolute joint targets, `[left j0..j5, left gripper, right j0..j5, right gripper]`; joints in rad, clipped to the URDF limits; grippers 0 closed to 1 open |
+| State | `joint_pos`, the same 14 values as measured |
+| Cameras | `top_cam` (the overhead D435), `left_cam` and `right_cam` (a D405 on each wrist); RGB, `cam_height` x `cam_width` |
+| Control | each step holds the target for one control period: joint PD with i2rt's gains plus gravity compensation, at 240 Hz PhysX |
+| Resets | both arms to the ready pose; a seeded reset shifts each loose object by up to 3 cm |
+
+Policies written for `yam_arms` are compatible with `yam_arena` as they are. The docs it hands an
+agent describe each joint's direction, checked against the URDF in `tests/test_urdf.py`.
+
+| `-E` option | Default | Meaning |
+|---|---|---|
+| `control_hz` | `10` | Control rate; physics stays at 240 Hz |
+| `cam_height`, `cam_width` | `224` | Observed image size |
+| `wrist_cam_mount` | `link` | `link` parents the wrist cameras to the gripper; `follow` moves them there every physics step |
+| `device` | `cuda:0` | Simulation device |
+| `headless` | `true` | `false` asks for a Kit window (untested) |
+
+From Arena directly, the embodiment is `yam_bimanual`, with scene keys `left_robot` and `right_robot`:
+
+```python
+from isaaclab.app import AppLauncher
+
+app = AppLauncher(headless=True, enable_cameras=True).app
+
+from yam_arena.embodiment import BimanualYamEmbodiment
+from yam_arena.scene import make_env
+
+env = make_env(BimanualYamEmbodiment(enable_cameras=True))
+```
+
+## Scenes
+
+**Placeholder.** The scenes, including the station scene, go here.
+
+## Status
+
+**Placeholder.** Live Dream-1 and agent results go here.
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `yam_arena/assets/yam/` | URDF, meshes and CoACD collision hulls from the 2.3 repo (vendored from i2rt, MIT: `LICENSE.i2rt`, `SOURCE_COMMIT`) |
-| `yam_arena/assets/yam/usd/yam_sim/yam_sim.usda` | the converted robot, made by `scripts/convert_usd.py` (shipped; the URDF stays the source of truth) |
-| `yam_arena/constants.py` | joints, READY pose, gains, scene and camera poses (quaternions are XYZW) |
-| `yam_arena/robot.py`, `actions.py`, `embodiment.py`, `scene.py` | Arena embodiment `yam_bimanual` (scene keys `left_robot` / `right_robot`) and the tabletop environment |
-| `yam_arena/inspect_embodiment.py` | Inspect Robots embodiment `yam_arena` |
-| `yam_arena/urdf.py`, `ik.py`, `analysis.py`, `demo.py` | NumPy-only URDF FK/IK, collision-hull distances, the scripted contact demo (used by the tests) |
-| `scripts/convert_usd.py` | stage 1: URDF -> USD and its checks |
-| `scripts/stage{2..6}_*.py`, `stage6_cli.sh`, `check_collision.py` | stage tests; each prints PASS/FAIL per check and a summary |
+| `yam_arena/assets/yam/` | URDF, meshes and convex collision hulls from YAM-inspect-Isaac, which vendors the i2rt model |
+| `yam_arena/assets/yam/usd/` | the robot converted to USD by `scripts/convert_usd.py`; the URDF stays the source of truth |
+| `yam_arena/constants.py` | joints, ready pose, gains, timing, scene and camera poses (quaternions are XYZW) |
+| `yam_arena/robot.py`, `actions.py`, `embodiment.py`, `scene.py`, `runtime.py` | the Arena embodiment and environment, and readers of simulator state (import these after Isaac Sim starts) |
+| `yam_arena/inspect_embodiment.py` | the Inspect Robots embodiment `yam_arena` |
+| `yam_arena/urdf.py`, `ik.py`, `analysis.py`, `demo.py`, `checks.py` | URDF kinematics, IK, collision-hull distances, the scripted demo and the stage tests' PASS/FAIL records; no Isaac Sim needed |
+| `scripts/` | the stage tests, which run in Isaac Sim |
+| `setup.sh`, `overrides.txt` | the installer, and the override that keeps Isaac Sim's own `cv2` |
 
-## Install (inside the Arena 0.3.1 venv)
+## Stage tests
+
+Run them from the checkout in Arena's venv, for example `python scripts/stage2_one_arm.py`. Each runs
+headless and prints PASS or FAIL per check, then a summary; the Python ones write it as JSON with
+`--out DIR`.
+
+| Script | Verifies |
+|---|---|
+| `convert_usd.py` | converts the URDF (`--force`) or checks the shipped USD (`--check-only`): joints, limits, a fixed base, every collision hull, link masses |
+| `stage2_one_arm.py` | one arm: fixed base, 7-D action, 240 Hz physics at 10 Hz control, holding the ready pose, link poses against URDF kinematics |
+| `stage3_bimanual.py` | both arms: each action slot drives its joint, the 14-D state, arm-on-arm contact without interpenetration |
+| `stage4_scene.py` | the tabletop: objects settle, the camera body stops the arm, the scripted pick-and-place and plate press |
+| `stage5_cameras.py` | the three cameras render, and the wrist cameras follow the grippers; saves frames to `out/` |
+| `stage6_inspect.py`, `stage6_cli.sh` | the Inspect Robots embodiment: its contract, reset and step, an `inspect_robots.eval()` episode, the CLI |
+| `check_collision.py` | how closely each link's simulated colliders follow its visual mesh |
+
+## Differences from yam_sim
+
+- **Fixed base.** Isaac Lab 3.0's URDF importer leaves the articulation root on the `base` rigid body,
+  which PhysX simulates as a floating base. `convert_usd.py` moves the root to the asset's default prim.
+- **Camera body.** A static 90 x 25 x 25 mm box stands at the top camera, so an arm cannot pass
+  through it.
+- **Contact offsets.** The arms use PhysX's default contact offsets. `yam_sim` asked for 5 mm, but
+  Isaac Lab 2.3 could not set it on instanced colliders. `yam_arm_cfg(contact_offset=0.005)` sets it.
+- **Scripted demo.** The grippers point straight down from 0.16 m, turned 180 degrees about the
+  approach axis. `yam_sim`'s orientation needs joint6 past its limit there, and its 0.20 m hover needs
+  joint4 past its limit; `tests/test_demo.py` checks both.
+- The scene editor (`yam-sim edit`) is not ported.
+
+## Development
 
 ```bash
-source IsaacLab-Arena/.venv/bin/activate        # Arena 0.3.1 checkout, `uv sync` done
-uv pip install --override ir-overrides.txt -e ./yam-arena
+uv venv --python 3.12 && uv pip install -e ".[dev]"
+ruff check . && ruff format --check . && pytest
 ```
 
-`ir-overrides.txt` holds `opencv-python-headless ; sys_platform == "never"`, which stops
-inspect-robots-yam's opencv from replacing Isaac Sim's own `cv2`. Install editable: the assets
-are read from the checkout. In an existing venv, never run plain `uv sync` afterwards, because it
-uninstalls the Inspect Robots packages (use `uv sync --inexact`).
+The tests need neither a GPU nor Isaac Sim. They check the URDF kinematics, IK, collision hulls,
+scripted demo and constants, and that `yam_arena` has the real rig's contract.
 
-## Use
+## License
 
-```bash
-python scripts/convert_usd.py --force          # only when the URDF changes (the USD is shipped)
-python scripts/convert_usd.py --check-only     # check the shipped USD
-python scripts/stage2_one_arm.py               # each stage ends with a PASS/FAIL summary
-...
-inspect-robots list embodiments                # includes yam_arena
-inspect-robots run --embodiment yam_arena --policy agent -P model=... --instruction "put the red cube on the plate"
-```
+**Placeholder.** This repository has no license yet: most of it is ported from
+[YAM-inspect-Isaac](https://github.com/ttpierson/YAM-inspect-Isaac) by Thomas Pierson, which has none.
 
-Arena:
-
-```python
-from isaaclab.app import AppLauncher
-app = AppLauncher(headless=True, enable_cameras=True).app
-from yam_arena.embodiment import BimanualYamEmbodiment
-from yam_arena.scene import make_env
-env = make_env(BimanualYamEmbodiment(enable_cameras=True))   # ArenaEnvBuilder, NoTask, 1 env
-```
-
-`-E` options for `yam_arena`: `cam_height`, `cam_width`, `control_hz`, `device`,
-`wrist_cam_mount` (`link`, the default, parents the wrist cameras to the gripper link;
-`follow` moves them every substep), and `headless` (`false` asks for a Kit window, untested).
-
-## What changed from the 2.3 port
-
-- **Fixed base.** The 3.0 URDF importer leaves `ArticulationRootAPI` on the `base` rigid body,
-  which PhysX simulates as a floating base pinned by a maximal joint (`is_fixed_base=False`, and
-  the arm flails). `convert_usd.py` moves the root schemas to the asset's default prim, as
-  overrides in the interface layer.
-- **Robot colliders** use PhysX default contact offsets. 2.3 asked for 5 mm but could not author
-  it on instanced colliders (it logged a warning), so 2.3's measured behaviour had defaults too.
-  `yam_arm_cfg(contact_offset=0.005)` applies it if you want it.
-- **New:** a static collider for the top camera's D435 body. An optional camera mast exists
-  (`camera_mast=True`); its shape is a guess, because 2.3 models no mount.
-- The URDF's link colours now render: black arms with silver tips, where 2.3 rendered them white.
-- The scripted demo grips straight down at 0.16 m hover, rotated 180 deg about the approach
-  axis. The 2.3 orientation is outside joint6's range there, and 0.20 m is outside joint4's.
-- The `edit` GUI and scene files from 2.3 are not ported.
+The YAM model in `yam_arena/assets/yam/` comes from [i2rt](https://github.com/i2rt-robotics/i2rt)
+under the MIT license: see `LICENSE.i2rt` and `SOURCE_COMMIT` there.
