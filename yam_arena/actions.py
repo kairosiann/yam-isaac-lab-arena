@@ -21,6 +21,7 @@ from dataclasses import MISSING
 import torch
 from isaaclab.assets import Articulation
 from isaaclab.managers import ActionTerm, ActionTermCfg, SceneEntityCfg
+from isaaclab.sensors import CameraCfg
 from isaaclab.utils import configclass
 
 from yam_arena.constants import ARM_JOINTS, FINGER_JOINTS, FINGER_OPEN, WRIST_CAM_POS, WRIST_CAM_ROT_XYZW
@@ -46,9 +47,9 @@ class YamArmAction(ActionTerm):
         if cfg.wrist_camera is not None and cfg.wrist_camera in env.scene.sensors:
             self._camera = env.scene[cfg.wrist_camera]
             self._gripper_body = self._asset.find_bodies("gripper")[0][0]
-            n = self.num_envs
-            self._mount_pos = torch.tensor([WRIST_CAM_POS], device=self.device).repeat(n, 1)
-            self._mount_quat = torch.tensor([WRIST_CAM_ROT_XYZW], device=self.device).repeat(n, 1)
+            n, mount = self.num_envs, cfg.wrist_camera_offset
+            self._mount_pos = torch.tensor([mount.pos], device=self.device).repeat(n, 1)
+            self._mount_quat = torch.tensor([mount.rot], device=self.device).repeat(n, 1)
 
     @property
     def action_dim(self) -> int:
@@ -79,13 +80,15 @@ class YamArmAction(ActionTerm):
             self.update_wrist_camera()
 
     def update_wrist_camera(self) -> None:
-        """Put the wrist camera at its mount on the current `gripper` link pose (ROS convention)."""
+        """Put the wrist camera at its mount on the current `gripper` link pose."""
         from isaaclab.utils.math import quat_apply, quat_mul
 
         pose = self._asset.data.body_link_pose_w.torch[:, self._gripper_body]
         pos, quat = pose[:, :3], pose[:, 3:7]
         self._camera.set_world_poses(
-            pos + quat_apply(quat, self._mount_pos), quat_mul(quat, self._mount_quat), convention="ros"
+            pos + quat_apply(quat, self._mount_pos),
+            quat_mul(quat, self._mount_quat),
+            convention=self.cfg.wrist_camera_offset.convention,
         )
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
@@ -101,6 +104,10 @@ class YamArmActionCfg(ActionTermCfg):
     gravity_compensation: bool = True
     wrist_camera: str | None = None
     """Scene name of a wrist camera to move onto this arm's gripper mount each substep, or None."""
+    wrist_camera_offset: CameraCfg.OffsetCfg = CameraCfg.OffsetCfg(
+        pos=WRIST_CAM_POS, rot=WRIST_CAM_ROT_XYZW, convention="ros"
+    )
+    """That camera's mount in the `gripper` link frame."""
 
 
 class YamGripperAction(ActionTerm):

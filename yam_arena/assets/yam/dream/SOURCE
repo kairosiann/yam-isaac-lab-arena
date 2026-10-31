@@ -1,0 +1,7 @@
+link{2,3}_{black,white}.stl: I2RT's link2 and link3 meshes split into the black and white parts Dream renders,
+from the dreamlabs 1.0.23 wheel (dream_examples/yam_mujoco/assets). MIT, see ../LICENSE.i2rt.
+
+79d17dc9342327a20130926ea484cd49b7058c6d77e3f1f512360e109e16ca7d  link2_black.stl
+d396dbecdb6a8010ae88a7afe7daf4ad8cbfd9ebeb3cf72bff0d5e896d56feef  link2_white.stl
+9ec7b8b5cb807a07175bf7ea6f369882ff203dae162976638b2feb40fe119b97  link3_black.stl
+ab2b315f511dd93808dce3a975794ff0a40291af47cc15f2f38786e6798d1ac3  link3_white.stl

@@ -1,4 +1,4 @@
-"""Inspect Robots embodiment ``yam_arena``: the bimanual YAM tabletop in Isaac Lab-Arena 0.3.1.
+"""Inspect Robots embodiment ``yam_arena``: the bimanual YAM in Isaac Lab-Arena 0.3.1.
 
 Same contract as the real rig's ``yam_arms`` (inspect-robots-yam 0.37.0) and the 2.3 port's
 ``yam_sim``, so policies built for the real arms run against it unchanged:
@@ -11,6 +11,14 @@ Same contract as the real rig's ``yam_arms`` (inspect-robots-yam 0.37.0) and the
 
 Each step holds the target for one control period (10 Hz: 24 PhysX substeps at 240 Hz) of joint
 PD plus gravity compensation, the way i2rt drives the real arms.
+
+``-E scene=tabletop`` (default) is the built-in table with a red cube and a plate; ``-E scene=station``
+is Dream's calibrated station (``yam_arena.station``), its top camera as calibrated or, with
+``-E top_cam=demo``, as Dream's demo moves it. On the station, a scene that asks for one of Dream's
+tasks ("put apple into the bowl", "put orange into the bowl", "put banana on the plate"; or
+``Target(kind="put", spec={"object": ..., "target": ...})``) gets Arena success detection: every step
+reports ``info["distance"]`` (object to goal, m) and ``info["success"]``, and the step on which the
+task's success criteria hold returns ``terminated=True, termination_reason="success"``.
 
 Importing this module is cheap: Isaac Sim starts on the first ``reset()``. One Kit app is
 started per process and reused by every instance.
@@ -26,13 +34,14 @@ from typing import Any
 
 import numpy as np
 from inspect_robots import Scene
-from inspect_robots.embodiment import RESETTABLE, SEEDABLE, EmbodimentBase, EmbodimentInfo
+from inspect_robots.embodiment import PRIVILEGED_SUCCESS, RESETTABLE, SEEDABLE, EmbodimentBase, EmbodimentInfo
 from inspect_robots.types import Observation, StepResult
 from inspect_robots_yam.config import DEFAULT_CAMERAS, action_box, observation_space
 from inspect_robots_yam.packing import ARM_DOF, STATE_KEY, pack, split
 
-from yam_arena import YAM_URDF
+from yam_arena import YAM_URDF, station
 from yam_arena.constants import ARM_JOINTS, CONTROL_HZ, FINGER_JOINTS, FINGER_OPEN, READY
+from yam_arena.rig import TABLETOP
 from yam_arena.urdf import parse_joints
 
 ARMS = ("left_robot", "right_robot")
@@ -40,7 +49,8 @@ ARMS = ("left_robot", "right_robot")
 SETTLE_S = 0.5
 # Extra renders after a reset: the RTX renderer needs a few frames to converge.
 RESET_RENDERS = 4
-# Seeded resets shift every free object (the cube and plate) by up to this much in x and y.
+# Seeded resets shift every free object (tabletop: the cube and plate; station: the fruit and the bottle,
+# not the fixed bowl and plate) by up to this much in x and y.
 OBJECT_JITTER = 0.03
 # Seconds Kit gets to shut down at interpreter exit before the process is ended anyway.
 CLOSE_TIMEOUT_S = 30.0
@@ -61,16 +71,26 @@ Upper arm 0.26 m, forearm 0.25 m, wrist to grasp point 0.25 m. At all-zero joint
 folded low with the gripper pointing forward. While it is folded, one joint can move the gripper
 in unexpected ways: move in small steps and check the observation after each."""
 
-DOCS = (
-    JOINT_GUIDE
+DOCS = {
+    "tabletop": JOINT_GUIDE
     + """
 
 Simulated rig (Isaac Lab-Arena 0.3.1, PhysX): both arms are mounted on the near edge of a table
 0.6 m apart, left arm at +y, both facing +x across it; each arm's base frame is its own mount.
 On the table: a red 4 cm cube in front of the left arm and a white plate in front of the right.
 Cameras: top_cam looks down over the arms from behind (its D435 body is a solid obstacle);
-left_cam and right_cam are on the wrists, looking out along the fingers."""
-)
+left_cam and right_cam are on the wrists, looking out along the fingers.""",
+    "station": JOINT_GUIDE
+    + """
+
+Simulated rig (Isaac Lab-Arena 0.3.1, PhysX): Dream's calibrated YAM station. Both arms are mounted
+0.61 m apart at the near edge of an oak table, left arm at +y, both facing +x across it; each arm's
+base frame is its own mount. On the table, as seen from behind the arms: an apple in front of the
+left arm, an orange between the arms, a banana in front of the right arm, a white bowl further out
+in the middle, a white plate further out on the right, and a teal water bottle at the far left.
+The bowl and plate are fixed. Cameras: top_cam looks down over the arms from a stand behind them;
+left_cam and right_cam are on the wrists, looking out along the fingers.""",
+}
 
 _APP: Any = None  # one SimulationApp per process
 
@@ -114,11 +134,19 @@ class YamArenaEmbodiment(EmbodimentBase):
         cam_width: int = 224,
         control_hz: float = CONTROL_HZ,
         wrist_cam_mount: str = "link",
+        scene: str = "tabletop",
+        top_cam: str | None = None,
     ) -> None:
+        if scene not in DOCS:
+            raise ValueError(f"scene must be one of {tuple(DOCS)}, got {scene!r}")
+        if top_cam is not None and scene != "station":
+            raise ValueError("top_cam applies to scene=station")
         self.headless = headless
         self.device = device
         self.cam_height, self.cam_width = int(cam_height), int(cam_width)
         self.wrist_cam_mount = wrist_cam_mount
+        self.scene = scene
+        self.rig = station.rig(top_cam or "calibrated") if scene == "station" else TABLETOP
         lower, upper = _urdf_arm_limits()
         per_arm_low, per_arm_high = np.append(lower, 0.0), np.append(upper, 1.0)
         self._low, self._high = pack(per_arm_low, per_arm_low), pack(per_arm_high, per_arm_high)
@@ -128,21 +156,27 @@ class YamArenaEmbodiment(EmbodimentBase):
             observation_space=observation_space(self.cam_height, self.cam_width, DEFAULT_CAMERAS),
             control_hz=float(control_hz),
             is_simulated=True,
-            capabilities=frozenset({SEEDABLE, RESETTABLE}),
-            docs=DOCS,
-            environment_id="isaaclab-arena-0.3.1-yam-bimanual-tabletop",
+            capabilities=frozenset({SEEDABLE, RESETTABLE} | ({PRIVILEGED_SUCCESS} if scene == "station" else set())),
+            supported_target_kinds=frozenset({station.TARGET_KIND}) if scene == "station" else frozenset(),
+            docs=DOCS[scene],
+            environment_id=f"isaaclab-arena-0.3.1-yam-bimanual-{self.rig.name}",
         )
         self._env: Any = None
         self._base: Any = None
+        self._goal: station.Goal | None = None
         self._instruction: str | None = None
         self._t = 0.0
 
     # -- Isaac lifecycle ---------------------------------------------------------------
 
-    def _ensure_sim(self) -> None:
+    def _ensure_sim(self, goal: station.Goal | None) -> None:
+        """Start Kit and build the env, rebuilding it when an episode asks for a different task."""
         global _APP
-        if self._env is not None:
+        if self._env is not None and goal == self._goal:
             return
+        if self._env is not None:
+            self._env.close()
+            self._env = self._base = None
         os.environ.setdefault("OMNI_KIT_ACCEPT_EULA", "YES")
         if _APP is None:
             from isaaclab.app import AppLauncher
@@ -156,11 +190,16 @@ class YamArenaEmbodiment(EmbodimentBase):
         import torch
 
         from yam_arena.embodiment import BimanualYamEmbodiment
-        from yam_arena.scene import make_env
+        from yam_arena.scene import FREE_OBJECTS, make_env
 
-        emb = BimanualYamEmbodiment(enable_cameras=True, wrist_cam_mount=self.wrist_cam_mount, contact_sensors=False)
-        self._env = make_env(emb, device=self.device, control_hz=self.info.control_hz)
+        emb = BimanualYamEmbodiment(
+            enable_cameras=True, wrist_cam_mount=self.wrist_cam_mount, contact_sensors=False, rig=self.rig
+        )
+        task = {"goal": goal} if self.scene == "station" else {}
+        self._env = make_env(emb, scene=self.scene, device=self.device, control_hz=self.info.control_hz, **task)
         self._base = self._env.unwrapped
+        self._goal = goal
+        self._free_objects = FREE_OBJECTS[self.scene]
         self._torch = torch
         self._ready = torch.tensor([[*READY, 1.0, *READY, 1.0]], dtype=torch.float32, device=self._base.device)
         self._ids = {
@@ -182,15 +221,16 @@ class YamArenaEmbodiment(EmbodimentBase):
     # -- Embodiment contract -----------------------------------------------------------
 
     def reset(self, scene: Scene, *, seed: int | None = None) -> Observation:
-        """Return both arms to READY, put every object back (jittered if seeded), and settle."""
-        self._ensure_sim()
+        """Return both arms to READY, put every object back (free ones jittered if seeded), and settle."""
+        self._ensure_sim(station.goal_for(scene.instruction, scene.target) if self.scene == "station" else None)
         torch = self._torch
         base = self._base
         self._instruction = scene.instruction
         self._env.reset()
         if seed is not None:
             rng = np.random.default_rng(seed)
-            for obj in base.scene.rigid_objects.values():
+            for name in self._free_objects:
+                obj = base.scene[name]
                 pose = obj.data.default_root_pose.torch.clone()
                 pose[:, :3] += base.scene.env_origins
                 jitter = rng.uniform(-OBJECT_JITTER, OBJECT_JITTER, size=2)
@@ -212,7 +252,17 @@ class YamArenaEmbodiment(EmbodimentBase):
         a = self._torch.tensor(packed, dtype=self._torch.float32, device=self._base.device).unsqueeze(0)
         self._env.step(a)
         self._t += self._base.step_dt
-        return StepResult(observation=self._observation())
+        if self._goal is None:
+            return StepResult(observation=self._observation())
+        from yam_arena.scene import goal_status
+
+        success, distance = goal_status(self._env, self._goal)
+        return StepResult(
+            observation=self._observation(),
+            terminated=success,
+            termination_reason="success" if success else None,
+            info={"success": success, "distance": distance},
+        )
 
     # -- internals ---------------------------------------------------------------------
 
@@ -245,5 +295,5 @@ class YamArenaEmbodiment(EmbodimentBase):
 
 
 def yam_arena_embodiment(**kwargs: Any) -> YamArenaEmbodiment:
-    """Embodiment ``yam_arena``; ``-E wrist_cam_mount=follow`` moves the wrist cameras explicitly."""
+    """Embodiment ``yam_arena``; ``-E scene=station [-E top_cam=demo]`` selects Dream's station."""
     return YamArenaEmbodiment(**kwargs)
