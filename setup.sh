@@ -25,16 +25,15 @@ git_https() { git -c url."https://github.com/".insteadOf=git@github.com: "$@"; }
 [[ -f $HERE/pyproject.toml && -d $HERE/yam_arena ]] || die "run setup.sh from a checkout of yam-arena"
 command -v git >/dev/null || die "git is required"
 nvidia-smi >/dev/null 2>&1 || die "nvidia-smi failed: install the NVIDIA driver first"
+PATH=$HOME/.local/bin:$PATH # where uv's installer puts uv
 if ! command -v uv >/dev/null; then
   step "Installing uv"
   command -v curl >/dev/null || die "curl is required to install uv"
   curl -LsSf https://astral.sh/uv/install.sh | sh
-  export PATH=$HOME/.local/bin:$PATH
   command -v uv >/dev/null || die "uv is installed but not on PATH; open a new shell and re-run"
 fi
 
 if ! command -v cmake >/dev/null; then
-  # robomimic, which Arena's environment pulls in, depends on egl-probe, built from source with CMake.
   step "Installing cmake"
   uv tool install cmake
   PATH=$(uv tool dir --bin):$PATH
@@ -57,8 +56,9 @@ step "Fetching Arena's submodules"
 git_https -C "$ARENA_DIR" submodule update --init --recursive
 
 step "Installing Arena's locked environment"
-# --inexact keeps the packages installed below when this is re-run.
-(cd "$ARENA_DIR" && uv sync --frozen --inexact)
+# --inexact keeps the packages installed below when this is re-run. robomimic, which Arena pulls in,
+# depends on egl-probe: it builds from source with CMake and declares a minimum version CMake 4 refuses.
+(cd "$ARENA_DIR" && CMAKE_POLICY_VERSION_MINIMUM=3.5 uv sync --frozen --inexact)
 VENV=$ARENA_DIR/.venv
 [[ -x $VENV/bin/python ]] || die "uv sync did not create $VENV"
 
