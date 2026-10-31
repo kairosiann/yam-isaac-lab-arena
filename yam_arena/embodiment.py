@@ -8,10 +8,13 @@ Action (14-D for two arms): ``[left j1..j6, left grip, right j1..j6, right grip]
 absolute targets in rad, grippers normalized 0 (closed) .. 1 (open). Gravity compensation is
 fed every physics substep by the arm action term.
 
-Cameras (``enable_cameras=True``): ``top_cam`` (D435, fixed in the world) and ``left_cam`` /
-``right_cam`` (D405 on each wrist). With ``wrist_cam_mount="link"`` the wrist cameras are USD
-children of the ``gripper`` link; with ``"follow"`` they live at the env root and are moved
-onto the mount every physics substep (the 2.3 port's workaround).
+Cameras (``enable_cameras=True``): ``top_cam`` (fixed in the world) and ``left_cam`` / ``right_cam``
+(one on each wrist). With ``wrist_cam_mount="link"`` the wrist cameras are USD children of the
+``gripper`` link; with ``"follow"`` they live at the env root and are moved onto the mount every
+physics substep (the 2.3 port's workaround).
+
+The ``rig`` places the arm bases and cameras: the built-in tabletop (D435 overhead, D405 wrists) or
+Dream's calibrated station (``yam_arena.station.rig``).
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.managers import EventTermCfg, ObservationGroupCfg, ObservationTermCfg, SceneEntityCfg
 from isaaclab.sensors import CameraCfg, ContactSensorCfg
 from isaaclab.utils import configclass
+from isaaclab_physx.renderers import IsaacRtxRendererCfg, IsaacRtxRendererGlobalSettingsCfg
 
 from isaaclab_arena.assets.register import register_asset
 from isaaclab_arena.embodiments.embodiment_base import EmbodimentBase
@@ -37,26 +41,17 @@ from yam_arena.actions import (
     bimanual_joint_pos_14,
     reset_arms_to_default,
 )
-from yam_arena.constants import (
-    CAM_RENDER_HEIGHT,
-    CAM_RENDER_WIDTH,
-    D405_FOCAL,
-    D435_FOCAL,
-    LEFT_BASE_POS,
-    OVERVIEW_CAM_POS,
-    OVERVIEW_CAM_ROT_XYZW,
-    RIGHT_BASE_POS,
-    TOP_CAM_POS,
-    TOP_CAM_ROT_XYZW,
-    WRIST_CAM_POS,
-    WRIST_CAM_ROT_XYZW,
-)
+from yam_arena.constants import CAM_RENDER_HEIGHT, CAM_RENDER_WIDTH, OVERVIEW_CAM_POS, OVERVIEW_CAM_ROT_XYZW
+from yam_arena.rig import TABLETOP, Camera, Rig
 from yam_arena.robot import asset_link_paths, yam_arm_cfg
 
 SIDES = {
-    "left": dict(key="left_robot", prim="LeftArm", base=LEFT_BASE_POS, cam="left_cam"),
-    "right": dict(key="right_robot", prim="RightArm", base=RIGHT_BASE_POS, cam="right_cam"),
+    "left": dict(key="left_robot", prim="LeftArm", cam="left_cam"),
+    "right": dict(key="right_robot", prim="RightArm", cam="right_cam"),
 }
+# Arena switches RTX's built-in ambient light off when it builds an env, but an env rebuilt in the same process
+# gets Kit's default back; the cameras' renderer pins it off, so every build is lit only by the scene's lights.
+RENDERER = IsaacRtxRendererCfg(global_settings=IsaacRtxRendererGlobalSettingsCfg(ambient_light_intensity=0.0))
 
 
 @configclass
@@ -75,7 +70,7 @@ class YamObservationsCfg:
 
 @register_asset
 class BimanualYamEmbodiment(EmbodimentBase):
-    """Two (or, for testing, one) YAM arms mounted on the near edge of the table."""
+    """Two (or, for testing, one) YAM arms mounted on the near edge of the table, placed by ``rig``."""
 
     name = "yam_bimanual"
     tags = ["embodiment"]
@@ -91,12 +86,14 @@ class BimanualYamEmbodiment(EmbodimentBase):
         overview_cam: bool = False,
         contact_sensors: bool = True,
         robot_contact_offset: float | None = None,
+        rig: Rig = TABLETOP,
     ):
         super().__init__(enable_cameras=enable_cameras, initial_pose=None)
         assert set(arms) <= set(SIDES) and arms, f"arms must be a subset of {tuple(SIDES)}"
         assert wrist_cam_mount in ("link", "follow"), wrist_cam_mount
         self.arms = tuple(a for a in SIDES if a in arms)  # always left before right
         self.wrist_cam_mount = wrist_cam_mount
+        self.rig = rig
         self.link_paths = asset_link_paths()
         self.scene_keys = tuple(SIDES[a]["key"] for a in self.arms)
 
@@ -104,7 +101,8 @@ class BimanualYamEmbodiment(EmbodimentBase):
         fields = []
         for side in self.arms:
             s = SIDES[side]
-            cfg = yam_arm_cfg("{ENV_REGEX_NS}/" + s["prim"], s["base"], contact_offset=robot_contact_offset)
+            prim = "{ENV_REGEX_NS}/" + s["prim"]
+            cfg = yam_arm_cfg(prim, rig.bases[side], contact_offset=robot_contact_offset, dream_look=rig.dream_look)
             fields.append((s["key"], ArticulationCfg, cfg))
         if contact_sensors:
             for side in self.arms:
@@ -117,7 +115,12 @@ class BimanualYamEmbodiment(EmbodimentBase):
         for side in self.arms:
             key = SIDES[side]["key"]
             follow_cam = SIDES[side]["cam"] if (enable_cameras and wrist_cam_mount == "follow") else None
-            arm = YamArmActionCfg(asset_name=key, gravity_compensation=gravity_compensation, wrist_camera=follow_cam)
+            arm = YamArmActionCfg(
+                asset_name=key,
+                gravity_compensation=gravity_compensation,
+                wrist_camera=follow_cam,
+                wrist_camera_offset=_offset(rig.wrist_cams[side]),
+            )
             action_fields.append((f"{side}_arm", YamArmActionCfg, arm))
             action_fields.append((f"{side}_gripper", YamGripperActionCfg, YamGripperActionCfg(asset_name=key)))
         self.action_config = make_configclass("YamActionsCfg", action_fields)()
@@ -145,10 +148,10 @@ class BimanualYamEmbodiment(EmbodimentBase):
 
     def _wrist_cam_cfg(self, side: str, height: int, width: int) -> CameraCfg:
         s = SIDES[side]
-        spawn = sim_utils.PinholeCameraCfg(focal_length=D405_FOCAL, clipping_range=(0.01, 20.0))
+        cam = self.rig.wrist_cams[side]
         if self.wrist_cam_mount == "link":
             prim = "{ENV_REGEX_NS}/" + s["prim"] + self.link_paths["gripper"] + f"/{side}_wrist_cam"
-            offset = CameraCfg.OffsetCfg(pos=WRIST_CAM_POS, rot=WRIST_CAM_ROT_XYZW, convention="ros")
+            offset = _offset(cam)
         else:
             prim = "{ENV_REGEX_NS}/" + s["prim"].replace("Arm", "WristCam")
             offset = CameraCfg.OffsetCfg()
@@ -157,12 +160,14 @@ class BimanualYamEmbodiment(EmbodimentBase):
             height=height,
             width=width,
             data_types=["rgb"],
-            spawn=spawn,
+            spawn=_pinhole(cam, height, width, near=0.01),
             offset=offset,
             update_latest_camera_pose=True,
+            renderer_cfg=RENDERER,
         )
 
     def _camera_cfg(self, height: int, width: int, overview: bool) -> ArenaCameraCfg:
+        top = self.rig.top_cam
         fields = [
             (
                 "top_cam",
@@ -172,8 +177,9 @@ class BimanualYamEmbodiment(EmbodimentBase):
                     height=height,
                     width=width,
                     data_types=["rgb"],
-                    spawn=sim_utils.PinholeCameraCfg(focal_length=D435_FOCAL, clipping_range=(0.05, 20.0)),
-                    offset=CameraCfg.OffsetCfg(pos=TOP_CAM_POS, rot=TOP_CAM_ROT_XYZW, convention="world"),
+                    spawn=_pinhole(top, height, width, near=0.05),
+                    offset=_offset(top),
+                    renderer_cfg=RENDERER,
                 ),
             )
         ]
@@ -193,6 +199,7 @@ class BimanualYamEmbodiment(EmbodimentBase):
                         offset=CameraCfg.OffsetCfg(
                             pos=OVERVIEW_CAM_POS, rot=OVERVIEW_CAM_ROT_XYZW, convention="world"
                         ),
+                        renderer_cfg=RENDERER,
                     ),
                 )
             )
@@ -219,3 +226,19 @@ class BimanualYamEmbodiment(EmbodimentBase):
 
     def get_ee_frame_transformer_names(self) -> list[str]:
         return []
+
+
+def _offset(cam: Camera) -> CameraCfg.OffsetCfg:
+    return CameraCfg.OffsetCfg(pos=cam.pos, rot=cam.rot_xyzw, convention=cam.convention)
+
+
+def _pinhole(cam: Camera, height: int, width: int, near: float) -> sim_utils.PinholeCameraCfg:
+    """The camera's lens at the render size. A calibrated lens (fx != fy or an off-centre principal point)
+    is rendered exactly through RTX's OpenCV pinhole model with zero distortion."""
+    lens = cam.lens.resized(width, height)
+    distortion = None
+    if not lens.is_ideal:
+        distortion = sim_utils.OpenCvPinholeDistortionCfg(
+            fx=lens.fx, fy=lens.fy, cx=lens.cx, cy=lens.cy, image_size=(width, height)
+        )
+    return sim_utils.PinholeCameraCfg(focal_length=lens.focal_mm, clipping_range=(near, 20.0), distortion=distortion)
