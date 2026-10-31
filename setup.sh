@@ -33,6 +33,14 @@ if ! command -v uv >/dev/null; then
   command -v uv >/dev/null || die "uv is installed but not on PATH; open a new shell and re-run"
 fi
 
+if ! command -v cmake >/dev/null; then
+  # robomimic, which Arena's environment pulls in, depends on egl-probe, built from source with CMake.
+  step "Installing cmake"
+  uv tool install cmake
+  PATH=$(uv tool dir --bin):$PATH
+  command -v cmake >/dev/null || die "cmake is installed but not on PATH"
+fi
+
 mkdir -p "$(dirname "$ARENA_DIR")"
 ARENA_DIR=$(cd "$(dirname "$ARENA_DIR")" && pwd)/$(basename "$ARENA_DIR")
 if [[ -e $ARENA_DIR/.git ]]; then
