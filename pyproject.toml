@@ -27,8 +27,8 @@ dev = ["pytest>=8.0", "ruff>=0.17"]
 yam_arena = "yam_arena.inspect_embodiment:yam_arena_embodiment"
 
 [project.urls]
-Repository = "https://github.com/kairosiann/yam-arena"
-Issues = "https://github.com/kairosiann/yam-arena/issues"
+Repository = "https://github.com/kairosiann/yam-isaac-lab-arena"
+Issues = "https://github.com/kairosiann/yam-isaac-lab-arena/issues"
 
 [tool.setuptools.packages.find]
 include = ["yam_arena*"]

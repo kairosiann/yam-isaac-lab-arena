@@ -17,7 +17,7 @@ renders with RT cores, so an A100 or H100 will not do.
 Install Arena, this package and the policies:
 
 ```bash
-git clone https://github.com/kairosiann/yam-arena && cd yam-arena
+git clone https://github.com/kairosiann/yam-isaac-lab-arena && cd yam-isaac-lab-arena
 ./setup.sh
 source ~/IsaacLab-Arena/yam.env
 ```
