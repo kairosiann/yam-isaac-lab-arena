@@ -5,27 +5,37 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yam-arena"
 version = "0.1.0"
-description = "Bimanual I2RT YAM embodiment for Isaac Lab-Arena 0.3.1 (Isaac Lab 3.0, Isaac Sim 6.1) and its Inspect Robots wrapper"
+description = "Bimanual I2RT YAM for Isaac Lab-Arena 0.3.1, and its Inspect Robots embodiment."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "Apache-2.0 (code); MIT (assets/yam, see yam_arena/assets/yam/LICENSE.i2rt)" }
-# Isaac Sim, Isaac Lab and Isaac Lab-Arena are not PyPI dependencies: install this editable into
-# the Arena 0.3.1 venv. Editable matters: the URDF, meshes and converted USD are read from the
-# checkout's yam_arena/assets/ directory.
-dependencies = [
-    "numpy",
-    "inspect-robots>=0.60",
-    "inspect-robots-yam>=0.6",
+authors = [{ name = "yam-arena contributors" }]
+keywords = ["robotics", "simulation", "isaac-lab-arena", "yam", "bimanual", "inspect-robots", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+# Isaac Sim, Isaac Lab and Isaac Lab-Arena are not on PyPI: setup.sh installs this into Arena's venv.
+dependencies = ["inspect-robots>=0.60", "inspect-robots-yam>=0.6", "numpy>=1.26"]
 
-[tool.setuptools]
-packages = ["yam_arena"]
-
-[tool.setuptools.package-data]
-yam_arena = ["assets/yam/**/*"]
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.17"]
 
 [project.entry-points."inspect_robots.embodiments"]
 yam_arena = "yam_arena.inspect_embodiment:yam_arena_embodiment"
+
+[project.urls]
+Repository = "https://github.com/kairosiann/yam-arena"
+Issues = "https://github.com/kairosiann/yam-arena/issues"
+
+[tool.setuptools.packages.find]
+include = ["yam_arena*"]
+
+[tool.setuptools.package-data]
+yam_arena = ["assets/yam/**/*"]
 
 [tool.ruff]
 line-length = 120
@@ -45,3 +55,8 @@ allow-dict-calls-with-keyword-arguments = true
 
 [tool.ruff.lint.isort]
 known-first-party = ["yam_arena"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"

@@ -74,12 +74,12 @@ class Checks:
 
 
 def _jsonable(value: Any) -> Any:
+    if hasattr(value, "tolist"):  # NumPy arrays and scalars, torch tensors
+        value = value.tolist()
     if isinstance(value, dict):
         return {str(k): _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(v) for v in value]
-    if hasattr(value, "tolist"):
-        return value.tolist()
     if isinstance(value, float):
         return round(value, 6)
     return value
