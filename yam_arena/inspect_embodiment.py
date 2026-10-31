@@ -175,7 +175,7 @@ class YamArenaEmbodiment(EmbodimentBase):
         import torch
 
         from yam_arena.embodiment import BimanualYamEmbodiment
-        from yam_arena.scene import make_env
+        from yam_arena.scene import FREE_OBJECTS, make_env
 
         emb = BimanualYamEmbodiment(
             enable_cameras=True, wrist_cam_mount=self.wrist_cam_mount, contact_sensors=False, rig=self.rig
@@ -184,6 +184,7 @@ class YamArenaEmbodiment(EmbodimentBase):
         self._env = make_env(emb, scene=self.scene, device=self.device, control_hz=self.info.control_hz, **task)
         self._base = self._env.unwrapped
         self._goal = goal
+        self._free_objects = FREE_OBJECTS[self.scene]
         self._torch = torch
         self._ready = torch.tensor([[*READY, 1.0, *READY, 1.0]], dtype=torch.float32, device=self._base.device)
         self._ids = {
@@ -206,8 +207,6 @@ class YamArenaEmbodiment(EmbodimentBase):
 
     def reset(self, scene: Scene, *, seed: int | None = None) -> Observation:
         """Return both arms to READY, put every object back (free ones jittered if seeded), and settle."""
-        from yam_arena.scene import FREE_OBJECTS
-
         self._ensure_sim(station.goal_for(scene.instruction, scene.target) if self.scene == "station" else None)
         torch = self._torch
         base = self._base
@@ -215,7 +214,7 @@ class YamArenaEmbodiment(EmbodimentBase):
         self._env.reset()
         if seed is not None:
             rng = np.random.default_rng(seed)
-            for name in FREE_OBJECTS[self.scene]:
+            for name in self._free_objects:
                 obj = base.scene[name]
                 pose = obj.data.default_root_pose.torch.clone()
                 pose[:, :3] += base.scene.env_origins
