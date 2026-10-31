@@ -32,13 +32,14 @@ mkdir -p ~/.dreamlabs && echo 'DREAM_API_KEY=dl_live_...' > ~/.dreamlabs/credent
 chmod 600 ~/.dreamlabs/credentials
 ```
 
-Run Dream-1. The `-E` options give it the control rate and frame size it expects:
+Run Dream-1 in the `station` scene, a replica of Dream's calibrated YAM station that scores the task
+automatically. The other `-E` options give Dream the control rate and frame size it expects:
 
 ```bash
 inspect-robots run --embodiment yam_arena --policy dream \
-  -E control_hz=20 -E cam_width=320 -E cam_height=176 \
-  --instruction "put the red cube on the plate" \
-  --max-steps 1600 --store-frames --log-dir ~/yam-eval/dream
+  -E scene=station -E control_hz=20 -E cam_width=320 -E cam_height=176 \
+  --instruction "put apple into the bowl" --scorer success_at_end \
+  --max-steps 2400 --store-frames --log-dir ~/yam-eval/dream
 ```
 
 The Dream client installs in Arena's environment, so the policy runs it in-process, without
@@ -49,7 +50,8 @@ Or run a model through OpenRouter:
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
 inspect-robots run --embodiment yam_arena --policy agent -P model=anthropic/claude-haiku-5.5 \
-  --instruction "put the red cube on the plate" --store-frames --log-dir ~/yam-eval/agent
+  -E scene=station --instruction "put apple into the bowl" --scorer success_at_end \
+  --max-steps 50 --store-frames --log-dir ~/yam-eval/agent
 ```
 
 Serve the trial reports from the VM:
@@ -78,6 +80,8 @@ agent describe each joint's direction, checked against the URDF in `tests/test_u
 
 | `-E` option | Default | Meaning |
 |---|---|---|
+| `scene` | `tabletop` | `tabletop` or `station` (see [Scenes](#scenes)) |
+| `top_cam` | `calibrated` | Station only: the calibrated top camera, or `demo`, Dream's example view (0.15 m lower, pitched 5 degrees up) |
 | `control_hz` | `10` | Control rate; physics stays at 240 Hz |
 | `cam_height`, `cam_width` | `224` | Observed image size |
 | `wrist_cam_mount` | `link` | `link` parents the wrist cameras to the gripper; `follow` moves them there every physics step |
@@ -99,11 +103,42 @@ env = make_env(BimanualYamEmbodiment(enable_cameras=True))
 
 ## Scenes
 
-**Placeholder.** The scenes, including the station scene, go here.
+| `-E scene=` | What |
+|---|---|
+| `tabletop` | The table from `yam_sim`: arms 0.6 m apart, a red 4 cm cube, a white plate, the D435 0.43 m above the arms |
+| `station` | Dream Labs' calibrated YAM station, from Dream's MuJoCo replica (dreamlabs 1.0.23, `yam_mujoco`) and the calibration it follows ([yamlab](https://github.com/ARISE-Initiative/yamlab) at `ec0455d`): arms 0.61 m apart in Dream's colours, an oak-coloured table, apple, orange, banana, water bottle, fixed bowl and plate, the top camera 0.94 m above the table on a stand, and the wrist cameras on Dream's mount |
+
+The station's cameras render the calibrated intrinsics (640x480 cropped to rows 60:420, as the station
+does), so a policy trained on Dream's station sees the same views. `scripts/station_check.py` compares
+them with renders from Dream's replica.
+
+On the station, Arena's success checks score Dream's three tasks. The instruction picks the task:
+`put apple into the bowl`, `put orange into the bowl` or
+`put banana on the plate` (a scene's `Target(kind="put", spec={"object": ..., "target": ...})` takes
+precedence). Every step reports `info["distance"]` (object to goal, in metres) and `info["success"]`,
+and the episode ends with `termination_reason="success"` once the goal has held for a second, so
+`success_at_end` and `min_distance_to_goal` score it. Other instructions run without success checks.
 
 ## Status
 
-**Placeholder.** Live Dream-1 and agent results go here.
+Dream-1 beta (`dreamlabs/dream-1-beta`) ran on an L40S on 2026-10-31 with the commands above: 20 Hz,
+320x176 frames, up to 120 s per trial, the Dream client in-process.
+
+| Scene | Task | Successes |
+|---|---|---|
+| `station` | put apple into the bowl | 5 of 6 |
+| `station` | put orange into the bowl | 6 of 6 |
+| `station` | put banana on the plate | 1 of 6 |
+| `station`, `top_cam=demo` | the same three tasks | 2, 3 and 0 of 3 |
+| `tabletop` | put the red cube on the plate | 0 of 5 (judged from the frames) |
+
+Successful trials took 12 to 90 s (median 24 s). The median round trip per trial was 0.5 to 0.7 s,
+and one session that Dream expired mid-trial was reopened without losing the trial. On the tabletop,
+Dream reaches the cube and closes the gripper beside it but never lifts it; that scene's top camera
+sits 0.5 m lower than the station's, and its arms and floor look nothing like Dream's station. In the
+station Dream grasps the fruit and carries it to the goal; the banana, the thinnest object, is the one
+it misses. An OpenRouter agent (`anthropic/claude-haiku-5.5`) also ran on the station:
+17 steps, then it gave up.
 
 ## Layout
 
@@ -111,7 +146,9 @@ env = make_env(BimanualYamEmbodiment(enable_cameras=True))
 |---|---|
 | `yam_arena/assets/yam/` | URDF, meshes and convex collision hulls from YAM-inspect-Isaac, which vendors the i2rt model |
 | `yam_arena/assets/yam/usd/` | the robot converted to USD by `scripts/convert_usd.py`; the URDF stays the source of truth |
-| `yam_arena/constants.py` | joints, ready pose, gains, timing, scene and camera poses (quaternions are XYZW) |
+| `yam_arena/assets/yam/dream/` | Dream's split link meshes (I2RT's, MIT) that colour the station's arms |
+| `yam_arena/constants.py` | joints, ready pose, gains, timing, and the tabletop's scene and camera poses (quaternions are XYZW) |
+| `yam_arena/rig.py`, `station.py` | where the arms and cameras stand in each scene; the station's numbers, objects and tasks, converted from Dream's frame |
 | `yam_arena/robot.py`, `actions.py`, `embodiment.py`, `scene.py`, `runtime.py` | the Arena embodiment and environment, and readers of simulator state (import these after Isaac Sim starts) |
 | `yam_arena/inspect_embodiment.py` | the Inspect Robots embodiment `yam_arena` |
 | `yam_arena/urdf.py`, `ik.py`, `analysis.py`, `demo.py`, `checks.py` | URDF kinematics, IK, collision-hull distances, the scripted demo and the stage tests' PASS/FAIL records; no Isaac Sim needed |
@@ -132,6 +169,7 @@ headless and prints PASS or FAIL per check, then a summary; the Python ones writ
 | `stage4_scene.py` | the tabletop: objects settle, the camera body stops the arm, the scripted pick-and-place and plate press |
 | `stage5_cameras.py` | the three cameras render, and the wrist cameras follow the grippers; saves frames to `out/` |
 | `stage6_inspect.py`, `stage6_cli.sh` | the Inspect Robots embodiment: its contract, reset and step, an `inspect_robots.eval()` episode, the CLI |
+| `station_check.py` | the station: camera poses and intrinsics, object sizes and masses, objects at rest, each task's success check, and side-by-side renders against Dream's replica |
 | `check_collision.py` | how closely each link's simulated colliders follow its visual mesh |
 
 ## Differences from yam_sim
