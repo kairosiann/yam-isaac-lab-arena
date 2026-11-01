@@ -5,7 +5,7 @@ Import only after the app has started.
 - :class:`YamArmAction` (6-D): absolute joint1..joint6 targets in rad, clamped to the joint
   limits. ``apply_actions`` runs every physics substep, so it also feeds the arm's gravity
   compensation torques as a feed-forward effort, the way i2rt drives the real arm (joint PD
-  plus gravity compensation). In 2.3 this was ``hold_arms()`` in the stepping loop.
+  plus gravity compensation).
 - :class:`YamGripperAction` (1-D): normalized opening g in [0, 1] (0 closed, 1 open); both
   finger joints track ``g * FINGER_OPEN``.
 
@@ -161,7 +161,7 @@ class YamGripperActionCfg(ActionTermCfg):
 def arm_state_7(env, asset_cfg: SceneEntityCfg = MISSING) -> torch.Tensor:
     """One arm's ``[j1..j6, gripper]``: joints in rad, gripper normalized (0 closed, 1 open).
 
-    Both fingers mirror one rack, so the gripper is their mean opening, as in the 2.3 wrapper.
+    Both fingers mirror one rack, so the gripper is their mean opening.
     """
     robot: Articulation = env.scene[asset_cfg.name]
     q = robot.data.joint_pos.torch

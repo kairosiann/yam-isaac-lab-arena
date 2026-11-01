@@ -6,7 +6,7 @@ and the [Inspect Robots](https://github.com/robocurve/inspect-robots) embodiment
 same action layout, state and cameras as the real rig's `yam_arms`. Use it to evaluate Dream Labs'
 Dream-1 ([`inspect-robots-dream`](https://github.com/kairosiann/inspect-robots-dream)) or an LLM agent
 on the YAM in simulation. It is a port of
-[YAM-inspect-Isaac](https://github.com/ttpierson/YAM-inspect-Isaac) (`yam_sim`, Isaac Lab 2.3).
+[YAM-inspect-Isaac](https://github.com/ttpierson/YAM-inspect-Isaac).
 Not affiliated with I2RT, NVIDIA or Dream Labs.
 
 ## Quickstart
@@ -124,7 +124,7 @@ env = make_env(BimanualYamEmbodiment(enable_cameras=True))
 
 | `-E scene=` | What |
 |---|---|
-| `tabletop` | The table from `yam_sim`: arms 0.6 m apart, a red 4 cm cube, a white plate, the D435 0.43 m above the arms |
+| `tabletop` | A plain table: arms 0.6 m apart, a red 4 cm cube, a white plate, the D435 0.43 m above the arms |
 | `station` | Dream Labs' calibrated YAM station, from Dream's MuJoCo replica (dreamlabs 1.0.23, `yam_mujoco`) and the calibration it follows ([yamlab](https://github.com/ARISE-Initiative/yamlab) at `ec0455d`): arms 0.61 m apart in Dream's colours, an oak-coloured table, apple, orange, banana, water bottle, fixed bowl and plate, the top camera 0.94 m above the table on a stand, and the wrist cameras on Dream's mount |
 
 The station's cameras render the calibrated intrinsics (640x480 cropped to rows 60:420, as the station
@@ -278,19 +278,6 @@ headless and prints PASS or FAIL per check, then a summary; the Python ones writ
 | `stage6_inspect.py`, `stage6_cli.sh` | the Inspect Robots embodiment: its contract, reset and step, an `inspect_robots.eval()` episode, the CLI |
 | `station_check.py` | the station: camera poses and intrinsics, object sizes and masses, objects at rest, each task's success check, and side-by-side renders against Dream's replica |
 | `check_collision.py` | how closely each link's simulated colliders follow its visual mesh |
-
-## Differences from yam_sim
-
-- **Fixed base.** Isaac Lab 3.0's URDF importer leaves the articulation root on the `base` rigid body,
-  which PhysX simulates as a floating base. `convert_usd.py` moves the root to the asset's default prim.
-- **Camera body.** A static 90 x 25 x 25 mm box stands at the top camera, so an arm cannot pass
-  through it.
-- **Contact offsets.** The arms use PhysX's default contact offsets. `yam_sim` asked for 5 mm, but
-  Isaac Lab 2.3 could not set it on instanced colliders. `yam_arm_cfg(contact_offset=0.005)` sets it.
-- **Scripted demo.** The grippers point straight down from 0.16 m, turned 180 degrees about the
-  approach axis. `yam_sim`'s orientation needs joint6 past its limit there, and its 0.20 m hover needs
-  joint4 past its limit; `tests/test_demo.py` checks both.
-- The scene editor (`yam-sim edit`) is not ported.
 
 ## Development
 

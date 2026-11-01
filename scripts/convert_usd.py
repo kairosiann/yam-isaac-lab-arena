@@ -1,15 +1,14 @@
-"""Stage 1: convert yam_sim.urdf to USD with Isaac Lab 3.0's URDF importer, then check it.
+"""Stage 1: convert yam_arm.urdf to USD with Isaac Lab 3.0's URDF importer, then check it.
 
     python scripts/convert_usd.py            # convert if missing or stale, then check
     python scripts/convert_usd.py --force    # always re-convert
     python scripts/convert_usd.py --check-only
 
-Writes yam_arena/assets/yam/usd/yam_sim/yam_sim.usda (a layered asset: interface layer plus
+Writes yam_arena/assets/yam/usd/yam_arm/yam_arm.usda (a layered asset: interface layer plus
 payloads/). Conversion settings: fixed base, no fixed-joint merging, zero drive gains (the
 Arena embodiment's actuator config sets the real gains), the "physx" physics variant.
 
-Each URDF <collision> is already one convex CoACD hull (the coworker's
-make_collision_meshes.py), and the importer marks every URDF collision mesh with the
+Each URDF <collision> is already one convex CoACD hull, and the importer marks every URDF collision mesh with the
 convexHull approximation, so PhysX keeps the hulls as-is. Note that the cfg field
 ``collision_type`` only applies to collision_from_visuals, so it is not what makes them hulls.
 
@@ -19,7 +18,7 @@ articulation rooted on a rigid body as *floating*-base (the fixed joint becomes 
 constraint), which stage 2 measured (``is_fixed_base == False``, the arm flailing). Isaac Lab
 3.0's PhysX backend fixes the same topology by moving the root off the rigid body
 (``PhysxManager.fix_articulation_root``); here the root schemas move to the asset's default
-prim ``/yam``, authored as overrides in the interface layer (yam_sim.usda).
+prim ``/yam``, authored as overrides in the interface layer (yam_arm.usda).
 
 Checks (from the URDF, which stays the source of truth):
   - joint1..joint8 exist with the URDF's types and limits
@@ -60,7 +59,7 @@ app = AppLauncher(headless=True).app
 def convert() -> None:
     from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
-    # The importer never overwrites: a non-empty yam_sim/ makes it write yam_sim_1/, so start clean.
+    # The importer never overwrites: a non-empty yam_arm/ makes it write yam_arm_1/, so start clean.
     if YAM_USD_DIR.exists():
         shutil.rmtree(YAM_USD_DIR)
     cfg = UrdfConverterCfg(

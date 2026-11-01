@@ -10,12 +10,12 @@ to an IK solution on the URDF). Reported: the commanded penetration (URDF FK + c
 vs the box), the achieved minimum signed distance of the arm's hulls to the box, the TCP
 distance to the box centre, and the contact force. The box must not move.
 
-Part C, grasp (port of the 2.3 diagnose_physics.py demo): the left arm picks the cube, holds it
+Part C, grasp: the left arm picks the cube, holds it
 lifted for 1.5 s, carries and places it; the right arm presses closed fingers 10 mm into the
-plate. Same metrics as diagnose_physics.py (joint-limit overshoot, peak joint speed, contact
+plate. Metrics (joint-limit overshoot, peak joint speed, contact
 force per link, cube lift, fingertip penetration into the plate, cube final position), plus
 jitter while lifted (cube motion relative to the gripper), fall-through, and blow-up checks.
-State is sampled at the 10 Hz control rate (2.3 sampled every 240 Hz physics step).
+State is sampled at the 10 Hz control rate.
 """
 
 from __future__ import annotations

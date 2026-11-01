@@ -1,19 +1,18 @@
-"""Scripted motions as Cartesian waypoints (port of the 2.3 ``yam_sim/demo.py``). NumPy only.
+"""Scripted motions as Cartesian waypoints. NumPy only.
 
 The tabletop demo: the left arm picks the cube and sets it down elsewhere; the right arm presses its
 closed fingers onto the plate. :func:`pick_place_waypoints` builds the same kind of plan for any object, which
 the ``yam_scripted`` policy (``yam_arena.scripted``) plays for the station's tasks and for task files.
 Each arm follows Cartesian TCP waypoints; every control step the target is interpolated (smoothstep)
 and turned into joint targets with DLS IK on the URDF kinematics, then sent through the embodiment's
-14-D joint action (the 2.3 demo ran closed-loop IK at 240 Hz on the simulator's Jacobian instead).
+14-D joint action.
 
-Two deliberate differences from 2.3, both forced by the arm's reach (see ``ik.py`` tests):
+Two choices forced by the arm's reach (see ``ik.py`` tests):
 - gripper orientation ``DOWN_GRIP``: pointing straight down with the fingers closing along world
-  Y, but rotated 180 deg about the approach axis relative to the 2.3 ``DOWN``. The 2.3 ``DOWN``
-  needs joint6 beyond its +-120 deg limit at these targets; a parallel gripper grasps the same
-  either way.
-- hover height 0.16 m above the table instead of 0.20 m: straight-down at 0.20 m is past joint4's
-  limit over the cube and plate (the 2.3 IK silently settled for a tilted, offset pose there).
+  Y, rotated 180 deg about the approach axis from ``DOWN_XYZW``, which needs joint6 beyond its
+  +-120 deg limit at these targets; a parallel gripper grasps the same either way.
+- hover height 0.16 m above the table: straight-down at 0.20 m is past joint4's limit over the
+  cube and plate.
 """
 
 from __future__ import annotations

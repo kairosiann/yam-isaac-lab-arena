@@ -11,7 +11,7 @@ fed every physics substep by the arm action term.
 Cameras (``enable_cameras=True``): ``top_cam`` (fixed in the world) and ``left_cam`` / ``right_cam``
 (one on each wrist). With ``wrist_cam_mount="link"`` the wrist cameras are USD children of the
 ``gripper`` link; with ``"follow"`` they live at the env root and are moved onto the mount every
-physics substep (the 2.3 port's workaround).
+physics substep.
 
 The ``rig`` places the arm bases and cameras: the built-in tabletop (D435 overhead, D405 wrists) or
 Dream's calibrated station (``yam_arena.station.rig``).

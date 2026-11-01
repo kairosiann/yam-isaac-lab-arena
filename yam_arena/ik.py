@@ -1,6 +1,6 @@
 """Damped-least-squares IK for one YAM arm on the URDF's kinematics. NumPy only.
 
-The stage tests use it to plan scripted motions (the 2.3 demo's pick-and-place and plate press,
+The stage tests use it to plan scripted motions (the tabletop pick-and-place and plate press,
 reaching into the camera body) as joint targets, which the embodiment's 14-D joint action then
 executes. Stage 2 checks that the simulator's link poses match this URDF FK, so the plan is valid
 in the sim. The TCP is ``TCP_OFFSET`` in the `gripper` link frame (approach axis +Z).

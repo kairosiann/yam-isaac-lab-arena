@@ -1,7 +1,7 @@
 """Inspect Robots embodiment ``yam_arena``: the bimanual YAM in Isaac Lab-Arena 0.3.1.
 
-Same contract as the real rig's ``yam_arms`` (inspect-robots-yam 0.37.0) and the 2.3 port's
-``yam_sim``, so policies built for the real arms run against it unchanged:
+Same contract as the real rig's ``yam_arms`` (inspect-robots-yam 0.37.0), so policies built for the
+real arms run against it unchanged:
 
 - images ``top_cam`` (the overhead D435) and ``left_cam`` / ``right_cam`` (the D405 on each
   wrist), RGB uint8, rendered at 640x360 and resized (cv2.resize) to ``cam_height`` x ``cam_width``;
