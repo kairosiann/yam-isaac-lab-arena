@@ -184,6 +184,7 @@ class Item:
     mass: float | None = None  # None: a fixture, static as in Dream's scene
     color: tuple[float, float, float] | None = None  # replaces the asset's look
     convex: bool = False  # collide as one convex hull, as Dream models it, instead of the asset's decomposition
+    yaw: float | None = None  # turn about the vertical (rad); None: Dream's (DREAM_YAW)
 
 
 # Dream's colours: the mean of its apple scan's texture, its orange's flat colour, and the means of its near-white
@@ -226,7 +227,7 @@ def placement(item: Item, lo, hi) -> tuple[float, tuple[float, ...], tuple[float
     """(uniform scale, position, rot_xyzw) of an asset whose unscaled local bounds are lo..hi (z up)."""
     lo, hi = np.asarray(lo, dtype=float), np.asarray(hi, dtype=float)
     scale = item.extent / float(np.max(hi[:2] - lo[:2]))
-    rot = _rz(DREAM_YAW)
+    rot = _rz(DREAM_YAW if item.yaw is None else item.yaw)
     xy = np.asarray(item.xy) - (rot @ ((lo + hi) / 2 * scale))[:2]
     return (
         scale,
@@ -267,6 +268,12 @@ class Goal:
 
 
 DREAM_TASKS = (Goal("apple", "bowl"), Goal("orange", "bowl"), Goal("banana", "plate"))
+
+# yam_scripted's plans (heights above the table top, m): where the TCP grips each fruit (its bounding-box centre)
+# and where each target's top is, measured on the settled scene; and which arm takes each fruit.
+GRIP_HEIGHT = {"apple": 0.032, "orange": 0.031, "banana": 0.018}
+TARGET_TOP = {"bowl": 0.055, "plate": 0.02}
+DEMO_ARM = {"apple": "left", "orange": "left", "banana": "right"}
 
 _PUT = re.compile(
     rf"(?:put|place|move|drop) (?:the |an? )?({'|'.join(FRUITS)}) "

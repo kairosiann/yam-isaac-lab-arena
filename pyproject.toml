@@ -26,6 +26,9 @@ dev = ["pytest>=8.0", "ruff>=0.17"]
 [project.entry-points."inspect_robots.embodiments"]
 yam_arena = "yam_arena.inspect_embodiment:yam_arena_embodiment"
 
+[project.entry-points."inspect_robots.policies"]
+yam_scripted = "yam_arena.scripted:yam_scripted_policy"
+
 [project.urls]
 Repository = "https://github.com/kairosiann/yam-isaac-lab-arena"
 Issues = "https://github.com/kairosiann/yam-isaac-lab-arena/issues"

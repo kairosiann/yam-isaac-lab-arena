@@ -2,12 +2,13 @@ import json
 import subprocess
 import sys
 from importlib.metadata import distribution
+from pathlib import Path
 
 import numpy as np
 import pytest
 from inspect_robots.compat import check_compatibility
 from inspect_robots.conformance import assert_embodiment_conformant
-from inspect_robots.embodiment import RESETTABLE, SEEDABLE
+from inspect_robots.embodiment import PRIVILEGED_SUCCESS, RESETTABLE, SEEDABLE
 from inspect_robots_yam.config import DEFAULT_CAMERAS
 from inspect_robots_yam.embodiment import YAMEmbodiment
 
@@ -68,3 +69,34 @@ def test_options_set_the_camera_size_and_control_rate():
         (name, 176, 320, 3) for name in DEFAULT_CAMERAS
     ]
     assert info.control_hz == 20.0
+
+
+EXAMPLE_TASK = str(Path(__file__).resolve().parents[1] / "examples" / "stack_cubes.py")
+
+
+def test_a_task_file_sets_the_scene_docs_success_and_environment():
+    from yam_arena.task_file import lookup
+
+    emb = YamArenaEmbodiment(task=EXAMPLE_TASK)
+    info = emb.info
+    assert emb.scene == "station" and emb.rig.name == "station-calibrated"
+    assert info.environment_id == "isaaclab-arena-0.3.1-yam-bimanual-station-calibrated-task-stack_cubes"
+    assert info.environment_revision == emb.task.sha256[:12]
+    assert PRIVILEGED_SUCCESS in info.capabilities and info.supported_target_kinds == frozenset()
+    assert "On the station table: a red 4 cm cube" in info.docs and "apple" not in info.docs
+    assert info.docs.startswith("Two identical 6-DoF arms")
+    assert lookup(info.environment_id) is emb.task
+    assert_embodiment_conformant(info)
+
+
+def test_a_task_file_and_a_different_scene_conflict():
+    with pytest.raises(ValueError, match="sets SCENE='station'"):
+        YamArenaEmbodiment(task=EXAMPLE_TASK, scene="tabletop")
+    assert YamArenaEmbodiment(task=EXAMPLE_TASK, scene="station").scene == "station"
+
+
+def test_object_jitter_defaults_to_3_cm_and_cannot_be_negative():
+    assert YamArenaEmbodiment().object_jitter == 0.03
+    assert yam_arena_embodiment(object_jitter="0").object_jitter == 0.0
+    with pytest.raises(ValueError, match="object_jitter"):
+        YamArenaEmbodiment(object_jitter=-0.01)
