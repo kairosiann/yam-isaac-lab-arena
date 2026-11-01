@@ -1,6 +1,6 @@
 """Check that each YAM link's simulated collision geometry matches its visual mesh (Isaac Lab 3.0).
 
-Port of the 2.3 scripts/check_collision.py. Spawns one arm at zero joint angles from the
+Spawns one arm at zero joint angles from the
 converted USD and probes the colliders PhysX actually simulates with raycasts. For each link it
 samples points on the visual surface and casts a ray inward along the surface normal, starting
 ``--standoff`` outside it, keeping only hits on that link's own colliders. The signed error is how
@@ -10,10 +10,10 @@ much sooner the ray meets the collider than the link's visual surface:
 - negative: collider is inset from the mesh
 - miss:     no collider of this link anywhere along the ray
 
-What changed for 3.0: the importer nests links (base/link1/link2/...) and stores each hull as an
+The Isaac Lab 3.0 importer nests links (base/link1/link2/...) and stores each hull as an
 instanced ``<link>_NNN`` Xform next to the instanced visual ``<link>``; links and colliders are
-found by schema (RigidBodyAPI, CollisionAPI) instead of by the 2.3 ``/visuals/`` and
-``/collisions/`` path names, and a hit belongs to the link with the longest matching path.
+found by schema (RigidBodyAPI, CollisionAPI), and a hit belongs to the link with the longest
+matching path.
 
     python scripts/check_collision.py [--out DIR]
 """

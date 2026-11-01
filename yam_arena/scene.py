@@ -1,9 +1,9 @@
 """The YAM scenes as Arena environments: the built-in tabletop and Dream's station. Import after app start.
 
 ``tabletop``: two arms on the near edge of a table, a red 4 cm cube in front of the left arm, a
-white plate in front of the right, a dome light, a ground plane and, new in this port, a static
-collider the size of the top camera's D435 body at the camera's pose (the 2.3 scene had none, so an
-arm could pass through the camera). NoTask: no success criteria.
+white plate in front of the right, a dome light, a ground plane and a static collider the size
+of the top camera's D435 body at the camera's pose, so an arm cannot pass through the camera.
+NoTask: no success criteria.
 
 ``station``: Dream's calibrated station (``yam_arena.station``): its table, apple, orange, banana,
 water bottle, bowl and plate at Dream's poses and sizes, and the top camera's stand. Given a goal

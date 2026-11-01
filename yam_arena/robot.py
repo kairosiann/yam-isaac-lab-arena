@@ -1,7 +1,7 @@
 """Isaac Lab 3.0 articulation config for one I2RT YAM arm (6 DoF + linear gripper).
 
 Import only after the app has started. Drive gains and joint friction come from i2rt's own
-controller config (yam_v1.yml, linear_4310.yml), as in the 2.3 port, so a joint target moves
+controller config (yam_v1.yml, linear_4310.yml), so a joint target moves
 the simulated arm the way it moves the real one.
 """
 
@@ -34,10 +34,9 @@ def yam_arm_cfg(
     """One YAM arm spawned from the pre-converted USD at ``prim_path``, base at ``base_pos``.
 
     ``contact_offset`` (m), if set, is authored on every arm collider with a zero rest offset. The
-    2.3 port asked for 5 mm but Isaac Lab 2.3 could not author it on the instanced colliders and
-    warned instead, so its measured behaviour used PhysX defaults; the default here (None) matches
-    that behaviour. Setting it un-instances the arm's colliders (more stage memory), as does
-    ``dream_look`` (colour the arm as Dream's station renders it, see :func:`spawn_in_dream_look`).
+    default (None) keeps PhysX's default offsets. Setting it un-instances the arm's colliders (more
+    stage memory), as does ``dream_look`` (colour the arm as Dream's station renders it, see
+    :func:`spawn_in_dream_look`).
     """
     spawn_kwargs = {}
     if contact_offset is not None:

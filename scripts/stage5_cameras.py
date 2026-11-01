@@ -2,9 +2,8 @@
 
     python scripts/stage5_cameras.py [--out DIR] [--wrist-mount link|follow]
 
-Replays the start of the 2.3 contact demo (both arms from READY to hover over the cube and the
-plate) and, at the times the 2.3 screenshots were taken (view_scene.py saved every 120 physics
-steps at 240 Hz: t = 0.5, 1.0, 1.5, 2.0, 2.5 s), saves:
+Replays the start of the contact demo (both arms from READY to hover over the cube and the
+plate) and, at t = 0.5, 1.0, 1.5, 2.0, 2.5 s, saves:
   - native renders (640x360) of top_cam, left_cam, right_cam and an overview camera
   - the 224x224 observation images (cv2.resize, as the inspect-robots wrapper does)
 Checks: shapes and dtype, frames are not blank, cameras differ from each other, the wrist
@@ -82,7 +81,7 @@ def main():
     ready = torch.tensor([[*READY, 1.0, *READY, 1.0]], dtype=torch.float32, device=dev)
     for _ in range(5):  # 0.5 s settle, like the wrapper's reset
         env.step(ready)
-    for _ in range(4):  # extra renders so RTX converges, like the 2.3 wrapper
+    for _ in range(4):  # extra renders so RTX converges
         base.sim.render()
 
     lplan, rplan = make_plans()

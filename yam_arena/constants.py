@@ -1,8 +1,6 @@
 """YAM robot, rig and scene constants. Pure Python: safe to import before Isaac Sim starts.
 
-Values come from the coworker's Isaac Lab 2.3 package (YAM-inspect-Isaac, ``yam_sim/assets.py``,
-``yam_sim/scene.py``, ``yam_sim/demo.py``). Every quaternion here is **XYZW** (Isaac Lab 3.0);
-the 2.3 source used WXYZ, and the original value is kept in a comment next to each one.
+Values come from YAM-inspect-Isaac. Every quaternion here is **XYZW** (Isaac Lab 3.0).
 """
 
 from __future__ import annotations
@@ -32,14 +30,14 @@ PAD_TIP_PAST_TCP = 0.013
 # 0.096 m apart in total, so each finger travels 0.0073 m per motor radian.
 FINGER_M_PER_RAD = 0.096 / 2 / 6.57
 
-# Actuator gains and limits from i2rt's yam_v1.yml / linear_4310.yml (same as the 2.3 port).
+# Actuator gains and limits from i2rt's yam_v1.yml / linear_4310.yml.
 SHOULDER = dict(effort=27.0, velocity=5.5, stiffness=80.0, damping=5.0, friction=0.3)  # DM4340, joints 1-3
 WRIST = dict(effort=7.0, velocity=20.0, stiffness=10.0, damping=1.5, friction=0.06)  # DM4310, joints 4-6
 GRIPPER = dict(effort=50.0, velocity=20.0 * FINGER_M_PER_RAD, stiffness=5000.0, damping=100.0)
 
 # -- physics and control -----------------------------------------------------------------
 
-PHYSICS_DT = 1 / 240  # 240 Hz keeps finger/object contacts stable (same as 2.3)
+PHYSICS_DT = 1 / 240  # 240 Hz keeps finger/object contacts stable
 CONTROL_HZ = 10.0  # the real rig's control rate
 DECIMATION = round(1.0 / (CONTROL_HZ * PHYSICS_DT))  # 24 physics steps per action
 RENDER_INTERVAL = DECIMATION  # render once per control step, after the last physics substep
@@ -65,8 +63,8 @@ DOME_LIGHT_INTENSITY = 2500.0
 
 # -- cameras -----------------------------------------------------------------------------
 
-# Rendered resolution (the 2.3 port's 640x360); observations are resized to the inspect-robots
-# contract (224x224 by default), like the 2.3 wrapper and the real rig's cv2.resize.
+# Rendered resolution; observations are resized to the inspect-robots contract (224x224 by
+# default), like the real rig's cv2.resize.
 CAM_RENDER_HEIGHT, CAM_RENDER_WIDTH = 360, 640
 # Focal lengths reproduce each sensor's colour HFOV on the default 20.955 mm aperture
 # (D435 69 deg, D405 87 deg).
@@ -75,14 +73,14 @@ D405_FOCAL = 11.04
 # Top camera (D435): between the arms, 0.19 m behind and 0.43 m above their bases, pitched
 # 45 deg down; "world" convention (forward +X, up +Z).
 TOP_CAM_POS = (-0.19, 0.0, TABLE_HEIGHT + 0.43)
-TOP_CAM_ROT_XYZW = (0.0, 0.3827, 0.0, 0.9239)  # 2.3 WXYZ: (0.9239, 0.0, 0.3827, 0.0)
+TOP_CAM_ROT_XYZW = (0.0, 0.3827, 0.0, 0.9239)
 # Wrist camera (D405) in the `gripper` link frame, ROS optical convention (+Z forward, +Y down):
 # 8 cm off the link's -Y face, looking along the approach axis, tilted 8 deg toward the fingers.
 WRIST_CAM_POS = (0.0, -0.08, 0.0)
-WRIST_CAM_ROT_XYZW = (-0.0698, 0.0, 0.0, 0.9976)  # 2.3 WXYZ: (0.9976, -0.0698, 0.0, 0.0)
+WRIST_CAM_ROT_XYZW = (-0.0698, 0.0, 0.0, 0.9976)
 # Overview (debug) camera: behind and above the arms, pitched 30 deg down, "world" convention.
 OVERVIEW_CAM_POS = (-1.0, 0.0, 1.65)
-OVERVIEW_CAM_ROT_XYZW = (0.0, 0.2588, 0.0, 0.9659)  # 2.3 WXYZ: (0.9659, 0.0, 0.2588, 0.0)
+OVERVIEW_CAM_ROT_XYZW = (0.0, 0.2588, 0.0, 0.9659)
 
 # Static collider for the top camera body. A RealSense D435 is 90 x 25 x 25 mm (W x H x D).
 # In the camera's "world"-convention frame: X = optical axis (depth), Y = image left (width),
@@ -103,14 +101,14 @@ TOP_CAM_FORWARD = _quat_rotate_xyzw(TOP_CAM_ROT_XYZW, (1.0, 0.0, 0.0))
 D435_BOX_POS = tuple(TOP_CAM_POS[i] - 0.5 * D435_SIZE_XYZ[0] * TOP_CAM_FORWARD[i] for i in range(3))
 D435_BOX_ROT_XYZW = TOP_CAM_ROT_XYZW
 
-# Optional camera mast (off by default): the 2.3 scene models no mount, so its shape is a guess.
+# Optional camera mast (off by default): the real mount is not modelled, so its shape is a guess.
 # A 20 mm square post from the floor to just under the camera body, behind it.
 CAMERA_MAST_SIZE = (0.02, 0.02, D435_BOX_POS[2] - 0.0125 - 0.005)
 CAMERA_MAST_POS = (D435_BOX_POS[0] - 0.03, 0.0, CAMERA_MAST_SIZE[2] / 2)
 
 # Gripper pointing straight down, fingers closing along world Y (gripper X -> world Y,
 # gripper Z -> world -Z). Used by the scripted IK demo.
-DOWN_XYZW = (0.70711, 0.70711, 0.0, 0.0)  # 2.3 WXYZ: (0.0, 0.70711, 0.70711, 0.0)
+DOWN_XYZW = (0.70711, 0.70711, 0.0, 0.0)
 
 
 def deg(rad: float) -> float:

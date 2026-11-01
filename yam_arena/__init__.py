@@ -9,10 +9,10 @@ from pathlib import Path
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 ASSET_DIR = PACKAGE_DIR / "assets" / "yam"
-YAM_URDF = ASSET_DIR / "yam_sim.urdf"
+YAM_URDF = ASSET_DIR / "yam_arm.urdf"
 # Output of scripts/convert_usd.py. The URDF importer writes {usd_dir}/{robot_name}/{robot_name}.usda.
 YAM_USD_DIR = ASSET_DIR / "usd"
-YAM_USD = YAM_USD_DIR / "yam_sim" / "yam_sim.usda"
+YAM_USD = YAM_USD_DIR / "yam_arm" / "yam_arm.usda"
 
 
 def require_usd() -> Path:
