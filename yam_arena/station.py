@@ -269,10 +269,11 @@ class Goal:
 
 DREAM_TASKS = (Goal("apple", "bowl"), Goal("orange", "bowl"), Goal("banana", "plate"))
 
-# yam_scripted's plans (heights above the table top, m): where the TCP grips each fruit (its bounding-box centre)
-# and where each target's top is, measured on the settled scene; and which arm takes each fruit.
-GRIP_HEIGHT = {"apple": 0.032, "orange": 0.031, "banana": 0.018}
-TARGET_TOP = {"bowl": 0.055, "plate": 0.02}
+# yam_scripted's plans (heights above the table top, m): where the TCP grips each fruit and where each target's
+# top is, measured on the settled scene (2026-11-01); and which arm takes each fruit. The TCP grips the apple and
+# orange at their centres; the banana (2.9 cm tall) a little above its centre, so the pad tips clear the table.
+GRIP_HEIGHT = {"apple": 0.031, "orange": 0.030, "banana": 0.018}
+TARGET_TOP = {"bowl": 0.0575, "plate": 0.0114}
 DEMO_ARM = {"apple": "left", "orange": "left", "banana": "right"}
 
 _PUT = re.compile(

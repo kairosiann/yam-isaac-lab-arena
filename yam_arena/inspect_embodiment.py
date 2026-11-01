@@ -206,6 +206,7 @@ class YamArenaEmbodiment(EmbodimentBase):
         self._instruction: str | None = None
         self._t = 0.0
         self._held = 0  # consecutive control steps a task file's success() has held
+        self._best_score = 0.0  # the best a task file's score() has reached this episode
 
     # -- Isaac lifecycle ---------------------------------------------------------------
 
@@ -271,7 +272,7 @@ class YamArenaEmbodiment(EmbodimentBase):
         torch = self._torch
         base = self._base
         self._instruction = scene.instruction
-        self._held = 0
+        self._held, self._best_score = 0, 0.0
         self._env.reset()
         if seed is not None and self.object_jitter > 0:
             rng = np.random.default_rng(seed)
@@ -315,7 +316,8 @@ class YamArenaEmbodiment(EmbodimentBase):
     # -- internals ---------------------------------------------------------------------
 
     def _task_step(self) -> StepResult:
-        """Score a task file's step: its success() must hold for success_hold_s to end the episode."""
+        """Score a task file's step: its success() must hold for success_hold_s to end the episode; its distance()
+        and score() go in ``info``."""
         from yam_arena.scene import object_states
 
         task = self.task
@@ -328,8 +330,10 @@ class YamArenaEmbodiment(EmbodimentBase):
             info["success"] = success
         if task.distance is not None:
             info["distance"] = float(task.distance(states))
-        if task.metrics is not None:
-            info.update({str(k): float(v) for k, v in task.metrics(states).items()})
+        if task.score is not None:
+            now = min(max(float(task.score(states)), 0.0), 1.0)
+            self._best_score = max(self._best_score, now)
+            info["score"] = self._best_score if task.score_over == "best" else now
         return StepResult(
             observation=self._observation(),
             terminated=success,

@@ -2,7 +2,7 @@
 the arms, a little further out. Both are loose.
 
 Run it:  inspect-robots run --embodiment yam_arena -E task=examples/stack_cubes.py \\
-           --instruction "put the red cube on the blue block" --scorer success_at_end ...
+           --instruction "put the red cube on the blue block" --scorer task_score ...
 """
 
 import numpy as np
@@ -39,9 +39,9 @@ def distance(objects):
     return float(np.linalg.norm(_offset(objects)))
 
 
-def metrics(objects):
-    """Partial credit: how high the red cube's bottom is above the table (m)."""
-    return {"red_lift": float(objects["red_cube"].low[2] - TOP)}
+def score(objects):
+    """Partial credit (success scores 1.0): 0.5 if the red cube ends up on the block but not squarely on it."""
+    return 0.5 if objects["red_cube"].low[2] > TOP + BLUE.size[2] - 0.01 else 0.0
 
 
 def demo():

@@ -29,6 +29,9 @@ yam_arena = "yam_arena.inspect_embodiment:yam_arena_embodiment"
 [project.entry-points."inspect_robots.policies"]
 yam_scripted = "yam_arena.scripted:yam_scripted_policy"
 
+[project.entry-points."inspect_robots.scorers"]
+task_score = "yam_arena.scoring:task_score"
+
 [project.urls]
 Repository = "https://github.com/kairosiann/yam-isaac-lab-arena"
 Issues = "https://github.com/kairosiann/yam-isaac-lab-arena/issues"

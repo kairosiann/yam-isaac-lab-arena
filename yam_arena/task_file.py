@@ -16,7 +16,9 @@ the simulator starts). The embodiment reads these names from it:
   seconds in a row (default 1.0), so ``--scorer success_at_end`` scores it.
 - ``distance(objects) -> float`` (optional): metres from the goal, reported every step as ``info["distance"]``
   (``--scorer min_distance_to_goal`` scores the closest approach).
-- ``metrics(objects) -> dict[str, float]`` (optional): more numbers for each step's ``info`` in the log.
+- ``score(objects) -> float`` (optional): partial credit from 0 to 1, reported every step as ``info["score"]``.
+  ``--scorer task_score`` gives a trial 1.0 for success and otherwise this score at the end of the episode, or
+  the best it reached with ``SCORE_OVER = "best"``.
 - ``demo() -> dict[str, list[Waypoint]]`` (optional): a scripted plan reaching full score, per arm
   (``"left"``, ``"right"``), which ``--policy yam_scripted`` plays. Build it with
   :func:`yam_arena.demo.pick_place_waypoints`.
@@ -40,6 +42,7 @@ import numpy as np
 SCENES = ("station", "tabletop")
 TABLE_TOP = {"station": 0.7475, "tabletop": 0.75}  # station.TABLE_TOP and constants.TABLE_HEIGHT
 SUCCESS_HOLD_S = 1.0
+SCORE_OVER = ("end", "best")
 GREY = (0.7, 0.7, 0.7)
 # Scene keys the room, robots and cameras already use.
 RESERVED_NAMES = frozenset(
@@ -186,9 +189,10 @@ class TaskFile:
     docs: str | None = None
     success: Callable[[dict[str, ObjectState]], bool] | None = None
     distance: Callable[[dict[str, ObjectState]], float] | None = None
-    metrics: Callable[[dict[str, ObjectState]], dict[str, float]] | None = None
+    score: Callable[[dict[str, ObjectState]], float] | None = None
     demo: Callable[[], dict[str, Any]] | None = None
     success_hold_s: float = SUCCESS_HOLD_S
+    score_over: str = "end"
     module: Any = field(default=None, repr=False, compare=False)
 
     @property
@@ -234,7 +238,9 @@ def load(path: str | Path) -> TaskFile:
     if clashes:
         raise ValueError(f"{path.name}: {clashes} already name part of the room or robot; rename them")
     hooks = {}
-    for hook in ("success", "distance", "metrics", "demo"):
+    if getattr(module, "metrics", None) is not None:
+        raise ValueError(f"{path.name}: metrics() is not read; return partial credit from score() instead")
+    for hook in ("success", "distance", "score", "demo"):
         fn = getattr(module, hook, None)
         if fn is not None and not callable(fn):
             raise TypeError(f"{path.name}: {hook} must be a function")
@@ -242,6 +248,9 @@ def load(path: str | Path) -> TaskFile:
     hold = float(getattr(module, "SUCCESS_HOLD_S", SUCCESS_HOLD_S))
     if not hold >= 0:
         raise ValueError(f"{path.name}: SUCCESS_HOLD_S must be >= 0")
+    score_over = getattr(module, "SCORE_OVER", "end")
+    if score_over not in SCORE_OVER:
+        raise ValueError(f"{path.name}: SCORE_OVER must be one of {SCORE_OVER}, got {score_over!r}")
     docs = (module.__doc__ or "").strip() or None
     return TaskFile(
         path=path,
@@ -251,6 +260,7 @@ def load(path: str | Path) -> TaskFile:
         objects=objects,
         docs=docs,
         success_hold_s=hold,
+        score_over=score_over,
         module=module,
         **hooks,
     )

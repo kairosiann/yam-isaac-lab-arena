@@ -28,7 +28,8 @@ def test_the_example_loads_with_its_objects_hooks_and_docs():
     task = load(EXAMPLE)
     assert (task.name, task.scene, task.table_top) == ("stack_cubes", "station", TABLE_TOP["station"])
     assert task.names == ("red_cube", "blue_block") == task.free_objects
-    assert all(callable(f) for f in (task.success, task.distance, task.metrics, task.demo))
+    assert all(callable(f) for f in (task.success, task.distance, task.score, task.demo))
+    assert task.score_over == "end"
     assert task.docs.startswith("On the station table")
     assert len(task.sha256) == 64 and task.success_hold_s == 1.0
 
@@ -43,7 +44,9 @@ def test_the_example_scores_a_stacked_cube_and_not_a_loose_one():
     assert task.success(stacked) and not task.success(loose) and not task.success(falling)
     assert task.distance(stacked) == pytest.approx(0.005)
     assert task.distance(loose) == pytest.approx(np.linalg.norm([0.08, 0.17, 0.04]))
-    assert task.metrics(stacked)["red_lift"] == pytest.approx(0.04)
+    off_square = {"red_cube": state((0.278, -0.05, top + 0.06)), "blue_block": blue}
+    assert not task.success(off_square)
+    assert (task.score(stacked), task.score(off_square), task.score(loose)) == (0.5, 0.5, 0.0)
 
 
 def test_the_examples_demo_is_reachable_within_the_joint_limits():
@@ -81,6 +84,8 @@ def test_the_scene_defaults_to_the_station_and_fixed_objects_are_not_free(tmp_pa
         ("OBJECTS = [Cylinder('a', pos=(0, 0, 1), radius=0)]", "radius and height"),
         ("OBJECTS = [Asset('a', 'bowl_ycb_robolab', xy=(0.3, 0), extent=0)]", "extent must be positive"),
         ("OBJECTS = [Box('a', pos=(0, 0, 1))]\nSUCCESS_HOLD_S = -1", "SUCCESS_HOLD_S"),
+        ("OBJECTS = [Box('a', pos=(0, 0, 1))]\nSCORE_OVER = 'max'", "SCORE_OVER must be one of"),
+        ("OBJECTS = [Box('a', pos=(0, 0, 1))]\ndef metrics(o):\n    return {}", "metrics.. is not read"),
     ],
 )
 def test_bad_task_files_are_reported(tmp_path, body, message):

@@ -54,6 +54,22 @@ inspect-robots run --embodiment yam_arena --policy agent -P model=anthropic/clau
   --max-steps 50 --store-frames --log-dir ~/yam-eval/agent
 ```
 
+Or play the scripted demo, which reaches full score. It is open loop, so `-E object_jitter=0` keeps every
+object where the scene puts it:
+
+```bash
+inspect-robots run --embodiment yam_arena --policy yam_scripted \
+  -E scene=station -E object_jitter=0 -E control_hz=20 -E cam_width=320 -E cam_height=176 \
+  --instruction "put apple into the bowl" --scorer success_at_end \
+  --max-steps 600 --store-frames --log-dir ~/yam-eval/scripted
+```
+
+Render each camera of a run to MP4 (one file per camera, in the log's `frames/` folder):
+
+```bash
+inspect-robots video ~/yam-eval/dream/*.json
+```
+
 Serve the trial reports from the VM:
 
 ```bash
@@ -73,14 +89,16 @@ log to a file.
 | State | `joint_pos`, the same 14 values as measured |
 | Cameras | `top_cam` (the overhead D435), `left_cam` and `right_cam` (a D405 on each wrist); RGB, `cam_height` x `cam_width` |
 | Control | each step holds the target for one control period: joint PD with i2rt's gains plus gravity compensation, at 240 Hz PhysX |
-| Resets | both arms to the ready pose; a seeded reset shifts each loose object by up to 3 cm |
+| Resets | both arms to the ready pose; a seeded reset shifts each loose object by up to `object_jitter` (3 cm) |
 
 Policies written for `yam_arms` are compatible with `yam_arena` as they are. The docs it hands an
 agent describe each joint's direction, checked against the URDF in `tests/test_urdf.py`.
 
 | `-E` option | Default | Meaning |
 |---|---|---|
-| `scene` | `tabletop` | `tabletop` or `station` (see [Scenes](#scenes)) |
+| `scene` | `tabletop` | `tabletop` or `station` (see [Scenes](#scenes)); a task file sets its own |
+| `task` | none | A task file (see [Your own task](#your-own-task)) |
+| `object_jitter` | `0.03` | How far (m) a seeded reset shifts each loose object in x and y; `0` keeps the layout fixed |
 | `top_cam` | `calibrated` | Station only: the calibrated top camera, or `demo`, Dream's example view (0.15 m lower, pitched 5 degrees up) |
 | `control_hz` | `10` | Control rate; physics stays at 240 Hz |
 | `cam_height`, `cam_width` | `224` | Observed image size |
@@ -119,6 +137,78 @@ precedence). Every step reports `info["distance"]` (object to goal, in metres) a
 and the episode ends with `termination_reason="success"` once the goal has held for a second, so
 `success_at_end` and `min_distance_to_goal` score it. Other instructions run without success checks.
 
+## Your own task
+
+A task file is one Python file that puts your objects in the station (or on the tabletop) and scores them.
+It imports nothing from Isaac Sim. [`examples/stack_cubes.py`](examples/stack_cubes.py) is a complete one;
+its outline:
+
+```python
+"""On the station table: a red 4 cm cube in front of the left arm, and a blue 6 x 6 x 4 cm block..."""
+
+from yam_arena.demo import pick_place_waypoints
+from yam_arena.task_file import TABLE_TOP, Box
+
+SCENE = "station"
+TOP = TABLE_TOP[SCENE]
+RED = Box("red_cube", pos=(0.17, 0.12, TOP + 0.02), size=(0.04, 0.04, 0.04), mass=0.05, color=(0.85, 0.12, 0.12))
+BLUE = Box("blue_block", pos=(0.25, -0.05, TOP + 0.02), size=(0.06, 0.06, 0.04), mass=0.2, color=(0.15, 0.30, 0.85))
+OBJECTS = [RED, BLUE]
+
+
+def success(objects):
+    """Stacked squarely and still; must hold for 1 s."""
+
+
+def distance(objects):
+    """Metres from the red cube to its stacked position."""
+
+
+def score(objects):
+    """Partial credit: 0.5 if the red cube ends up on the block but not squarely on it."""
+
+
+def demo():
+    place = (BLUE.pos[0], BLUE.pos[1], TOP + BLUE.size[2] + RED.size[2] / 2 + 0.005)
+    return {"left": pick_place_waypoints(RED.pos, place, travel_z=TOP + 0.14)}
+```
+
+Run Dream-1 on it, and play its demo:
+
+```bash
+inspect-robots run --embodiment yam_arena --policy dream \
+  -E task=examples/stack_cubes.py -E object_jitter=0 -E control_hz=20 -E cam_width=320 -E cam_height=176 \
+  --instruction "put the red cube on the blue block" --scorer task_score \
+  --max-steps 2400 --store-frames --log-dir ~/yam-eval/stack-dream
+inspect-robots run --embodiment yam_arena --policy yam_scripted \
+  -E task=examples/stack_cubes.py -E object_jitter=0 -E control_hz=20 -E cam_width=320 -E cam_height=176 \
+  --instruction "put the red cube on the blue block" --scorer task_score \
+  --max-steps 600 --store-frames --log-dir ~/yam-eval/stack-demo
+```
+
+What the embodiment reads from the file:
+
+| Name | Meaning |
+|---|---|
+| docstring | What is on the table; agents read it after the robot's docs |
+| `SCENE` | `"station"` (default): Dream's room, table, lights and cameras; `"tabletop"`: the built-in table |
+| `OBJECTS` | `Box`, `Cylinder`, `Sphere` (sizes in m, `pos` the centre, sRGB `color`) and `Asset` (a model from Arena's object library, e.g. `"bowl_ycb_robolab"`, scaled to `extent` and set on the table at `xy`). With a `mass` (kg) an object is loose; without one it is fixed |
+| `success(objects)` | Optional. Gets an `ObjectState` per object (`pos`, `quat_xyzw`, `lin_vel`, `ang_vel`, bounding box `low`/`high`, `resting()`). Once it has returned True for `SUCCESS_HOLD_S` (1.0 s) in a row, the episode ends with `termination_reason="success"` |
+| `distance(objects)` | Optional. Metres to the goal, in each step's `info["distance"]`; `--scorer min_distance_to_goal` reports the closest approach |
+| `score(objects)` | Optional. Partial credit from 0 to 1, in each step's `info["score"]`: at the end of the episode, or the best it reached with `SCORE_OVER = "best"` |
+| `demo()` | Optional. Waypoints per arm (`"left"`, `"right"`) for `--policy yam_scripted`; `pick_place_waypoints(pick, place, travel_z=...)` builds a top-down pick and place |
+
+`--scorer task_score` scores a trial 1.0 when it ends in success, and otherwise its `score()` (0 without one).
+The run prints it at the end (`task_score: 1`), and the log keeps it. Per-step `info` is not saved, so put
+anything you want scored into `success`, `distance` or `score`.
+
+World frame: x forward from the arms, y left, z up, in metres; the arm bases stand at x 0, y +-0.305, z 0.75
+on the station. Pointing straight down, an arm reaches the table from 0.10 to 0.50 m in front of its own base,
+and up to 0.40 m out on the midline between the arms; 16 cm above the table, both ranges end 0.10 m sooner. It
+cannot reach in front of the other arm. Check a demo offline with `yam_arena.demo.ArmPlan` (as
+`tests/test_task_file.py` does) before spending GPU time. Arena's object library lists its assets with
+`isaaclab_arena.assets.registries.AssetRegistry`.
+
 ## Status
 
 Dream-1 beta (`dreamlabs/dream-1-beta`) ran on an L40S on 2026-10-31 with the commands above: 20 Hz,
@@ -151,6 +241,8 @@ it misses. An OpenRouter agent (`anthropic/claude-haiku-5.5`) also ran on the st
 | `yam_arena/rig.py`, `station.py` | where the arms and cameras stand in each scene; the station's numbers, objects and tasks, converted from Dream's frame |
 | `yam_arena/robot.py`, `actions.py`, `embodiment.py`, `scene.py`, `runtime.py` | the Arena embodiment and environment, and readers of simulator state (import these after Isaac Sim starts) |
 | `yam_arena/inspect_embodiment.py` | the Inspect Robots embodiment `yam_arena` |
+| `yam_arena/task_file.py`, `examples/` | task files: loading and checking one, and an example |
+| `yam_arena/scripted.py`, `scoring.py` | the Inspect Robots policy `yam_scripted` (scripted demos that reach full score) and scorer `task_score` |
 | `yam_arena/urdf.py`, `ik.py`, `analysis.py`, `demo.py`, `checks.py` | URDF kinematics, IK, collision-hull distances, the scripted demo and the stage tests' PASS/FAIL records; no Isaac Sim needed |
 | `scripts/` | the stage tests, which run in Isaac Sim |
 | `setup.sh`, `overrides.txt` | the installer, and the override that keeps Isaac Sim's own `cv2` |
