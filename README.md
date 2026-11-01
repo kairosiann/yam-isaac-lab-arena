@@ -64,10 +64,11 @@ inspect-robots run --embodiment yam_arena --policy yam_scripted \
   --max-steps 600 --store-frames --log-dir ~/yam-eval/scripted
 ```
 
-Render each camera of a run to MP4 (one file per camera, in the log's `frames/` folder):
+Render each camera of each run to MP4 (one file per camera, in the log's `frames/` folder;
+`inspect-robots video` takes one log at a time):
 
 ```bash
-inspect-robots video ~/yam-eval/dream/*.json
+for log in ~/yam-eval/dream/*.json; do inspect-robots video "$log"; done
 ```
 
 Serve the trial reports from the VM:
@@ -229,6 +230,19 @@ sits 0.5 m lower than the station's, and its arms and floor look nothing like Dr
 station Dream grasps the fruit and carries it to the goal; the banana, the thinnest object, is the one
 it misses. An OpenRouter agent (`anthropic/claude-haiku-5.5`) also ran on the station:
 17 steps, then it gave up.
+
+On 2026-11-01 a fresh `l40s-48gb.1x` (128 GB disk) ran the Quickstart: `setup.sh` took 3 minutes and the
+install about 40 GB; the first trial, with Isaac Sim's first start, took 6 minutes, later ones under 1 minute
+to start. With `-E object_jitter=0`:
+
+| Policy | Task | Result |
+|---|---|---|
+| `dream` | station: put apple into the bowl | success |
+| `yam_scripted` | station: Dream's three tasks | success on each |
+| `yam_scripted` | `examples/stack_cubes.py` (station), and the same file on the tabletop | success on each |
+| `yam_scripted` | a task file with Arena library assets (an apple into a bowl) | success |
+| `yam_scripted` | `stack_cubes.py` with the cube set down 2.8 cm off square | `task_score` 0.5 |
+| `dream` | `examples/stack_cubes.py` | no success in 120 s |
 
 ## Layout
 
