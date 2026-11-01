@@ -207,8 +207,9 @@ World frame: x forward from the arms, y left, z up, in metres; the arm bases sta
 on the station. Pointing straight down, an arm reaches the table from 0.10 to 0.50 m in front of its own base,
 and up to 0.40 m out on the midline between the arms; 16 cm above the table, both ranges end 0.10 m sooner. It
 cannot reach in front of the other arm. Check a demo offline with `yam_arena.demo.ArmPlan` (as
-`tests/test_task_file.py` does) before spending GPU time. Arena's object library lists its assets with
-`isaaclab_arena.assets.registries.AssetRegistry`.
+`tests/test_task_file.py` does) before spending GPU time. An `Asset` names a model in Arena's object library
+(`isaaclab_arena.assets.registries.AssetRegistry`); the station's are `apple_01_objaverse_robolab`,
+`orange_02_fruits_veggies_robolab`, `banana_ycb_robolab`, `bowl_ycb_robolab` and `plate_small_vomp_robolab`.
 
 ## Status
 
