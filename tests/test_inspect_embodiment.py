@@ -1,6 +1,8 @@
 import json
+import socket
 import subprocess
 import sys
+import tempfile
 from importlib.metadata import distribution
 from pathlib import Path
 
@@ -12,9 +14,9 @@ from inspect_robots.embodiment import PRIVILEGED_SUCCESS, RESETTABLE, SEEDABLE
 from inspect_robots_yam.config import DEFAULT_CAMERAS
 from inspect_robots_yam.embodiment import YAMEmbodiment
 
-from yam_arena import YAM_URDF
+from yam_arena import YAM_URDF, inspect_embodiment
 from yam_arena.constants import ARM_JOINTS, CONTROL_HZ
-from yam_arena.inspect_embodiment import YamArenaEmbodiment, yam_arena_embodiment
+from yam_arena.inspect_embodiment import YamArenaEmbodiment, window_display, yam_arena_embodiment
 from yam_arena.urdf import parse_joints
 
 SIM_MODULES = {"isaacsim", "isaaclab", "isaaclab_arena", "isaaclab_physx", "omni", "carb", "pxr", "torch"}
@@ -100,3 +102,36 @@ def test_object_jitter_defaults_to_3_cm_and_cannot_be_negative():
     assert yam_arena_embodiment(object_jitter="0").object_jitter == 0.0
     with pytest.raises(ValueError, match="object_jitter"):
         YamArenaEmbodiment(object_jitter=-0.01)
+
+
+def test_a_window_goes_to_display_when_it_is_set():
+    assert window_display({"DISPLAY": ":7"}) == ":7"
+
+
+@pytest.fixture
+def x_socket(monkeypatch):
+    """A Unix socket path standing in for the desktop's (short: macOS caps socket paths at 104 bytes)."""
+    with tempfile.TemporaryDirectory(dir="/tmp") as d:
+        path = Path(d) / "X1"
+        monkeypatch.setattr(inspect_embodiment, "DESKTOP_SOCKET", path)
+        yield path
+
+
+def test_a_window_falls_back_to_the_browser_desktop(x_socket):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+        server.bind(str(x_socket))
+        server.listen()
+        assert window_display({}) == ":1"
+
+
+def test_a_window_without_a_display_says_how_to_get_one(x_socket):
+    with pytest.raises(RuntimeError, match=r"setup\.sh --desktop"):
+        window_display({"DISPLAY": ""})
+
+
+def test_a_stale_desktop_socket_does_not_count_as_a_display(x_socket):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+        server.bind(str(x_socket))  # the file exists, but nothing listens on it
+    assert x_socket.exists()
+    with pytest.raises(RuntimeError, match="needs a display"):
+        window_display({})

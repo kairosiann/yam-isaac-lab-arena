@@ -29,6 +29,7 @@ from isaaclab.managers.recorder_manager import DatasetExportMode, RecorderManage
 from isaaclab.sim.spawners.from_files import spawn_from_usd
 from isaaclab.sim.spawners.shapes import spawn_cylinder
 from isaaclab.sim.utils import clone
+from isaaclab.visualizers.visualizer_cfg import VisualizerCfg
 from isaaclab_arena.assets.object import Object
 from isaaclab_arena.assets.object_library import DomeLight, GroundPlane
 from isaaclab_arena.assets.object_type import ObjectType
@@ -65,6 +66,8 @@ from yam_arena.constants import (
     TABLE_CENTER_X,
     TABLE_HEIGHT,
     TABLE_SIZE,
+    WINDOW_EYE,
+    WINDOW_LOOKAT,
 )
 from yam_arena.station import linear_rgb
 
@@ -413,6 +416,8 @@ def env_cfg_callback(control_hz: float | None = None):
         env_cfg.terminations = make_configclass("TerminationsCfg", [])()
         env_cfg.recorders = RecorderManagerBaseCfg(dataset_export_mode=DatasetExportMode.EXPORT_NONE)
         env_cfg.metrics = None
+        # Where the Isaac Sim window looks (-E headless=false); a headless run makes no window.
+        env_cfg.sim.default_visualizer_cfg = VisualizerCfg(eye=WINDOW_EYE, lookat=WINDOW_LOOKAT)
         return env_cfg
 
     return configure

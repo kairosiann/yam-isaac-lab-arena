@@ -3,6 +3,9 @@
 # for Dream-1 (`dream`) and OpenRouter models (`agent`). Run it from a checkout of this repository.
 # Re-running it is safe; it picks up where an interrupted run stopped.
 #
+#   ./setup.sh --desktop   also install a desktop in the browser, for watching runs with
+#                          -E headless=false (Ubuntu with sudo and systemd; see scripts/desktop.sh)
+#
 #   ARENA_DIR   where Arena is cloned (default ~/IsaacLab-Arena); its .venv is the environment
 #   DREAM_SPEC  where inspect-robots-dream comes from: a pip URL or a local checkout
 #               (default: its GitHub repository)
@@ -22,7 +25,19 @@ step() { echo "==> $*"; }
 # Arena's submodules use SSH URLs; fetch them over HTTPS so no GitHub key is needed.
 git_https() { git -c url."https://github.com/".insteadOf=git@github.com: "$@"; }
 
+DESKTOP=false
+for arg in "$@"; do
+  case $arg in
+  --desktop) DESKTOP=true ;;
+  *) die "unknown option '$arg' (usage: ./setup.sh [--desktop])" ;;
+  esac
+done
+
 [[ -f $HERE/pyproject.toml && -d $HERE/yam_arena ]] || die "run setup.sh from a checkout of yam-arena"
+if $DESKTOP; then
+  command -v apt-get >/dev/null || die "--desktop needs apt-get (Ubuntu or Debian)"
+  [[ -d /run/systemd/system ]] || die "--desktop needs systemd to run the desktop service"
+fi
 command -v git >/dev/null || die "git is required"
 nvidia-smi >/dev/null 2>&1 || die "nvidia-smi failed: install the NVIDIA driver first"
 PATH=$HOME/.local/bin:$PATH # where uv's installer puts uv
@@ -79,4 +94,36 @@ printf 'source %q\nexport OMNI_KIT_ACCEPT_EULA=YES ACCEPT_EULA=Y\n' "$VENV/bin/a
 
 embodiments=$("$VENV/bin/inspect-robots" list embodiments) || die "inspect-robots does not start"
 grep -Eq '^[[:space:]]*-[[:space:]]+yam_arena$' <<<"$embodiments" || die "yam_arena is not a registered embodiment"
+
+if $DESKTOP; then
+  step "Installing the browser desktop (Xvfb + xfce, noVNC on 127.0.0.1:6080) as the arena-desktop service"
+  apt=(sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 -qq)
+  "${apt[@]}" update
+  # Without recommends: no display manager, which would start an X server on the GPU.
+  "${apt[@]}" install -y --no-install-recommends \
+    xvfb xfce4 xfce4-terminal dbus-x11 x11vnc novnc websockify x11-xserver-utils \
+    libglu1-mesa libvulkan1 libxcursor1 libxi6 libxinerama1 libxrandr2
+  sudo tee /etc/systemd/system/arena-desktop.service >/dev/null <<UNIT
+[Unit]
+Description=Browser desktop for Isaac Sim windows (Xvfb :1 + xfce, noVNC on 127.0.0.1:6080)
+After=network.target
+
+[Service]
+User=$(id -un)
+Environment=HOME=$HOME
+ExecStart=/bin/bash $HERE/scripts/desktop.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  sudo systemctl daemon-reload
+  sudo systemctl enable --quiet arena-desktop.service
+  sudo systemctl restart arena-desktop.service
+  for _ in $(seq 30); do (: </dev/tcp/127.0.0.1/6080) 2>/dev/null && break; sleep 1; done
+  (: </dev/tcp/127.0.0.1/6080) 2>/dev/null || die "the desktop did not start; see: journalctl -u arena-desktop"
+  echo "Desktop: on your laptop, run  brev port-forward <instance> -p 6080:6080  (or ssh -L 6080:127.0.0.1:6080)"
+  echo "and open http://127.0.0.1:6080, then add -E headless=false to a run."
+fi
 echo "Done. Start each shell with:  source $ARENA_DIR/yam.env"

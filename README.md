@@ -82,6 +82,33 @@ Forward port 8300 to your laptop (`brev port-forward <instance> -p 8300:8300` on
 pages written while a run was live. `inspect-robots view <log>.json -o report.html` renders one
 log to a file.
 
+### Watch a run live
+
+Runs are headless. To watch one, install a desktop that opens in your browser. It needs Ubuntu with
+sudo and systemd, as on a Brev VM, and takes about a minute on top of the install:
+
+```bash
+./setup.sh --desktop
+```
+
+The desktop runs as the `arena-desktop` service, so it starts again whenever the VM does. Forward
+port 6080 (`brev port-forward <instance> -p 6080:6080`, or `ssh -L 6080:127.0.0.1:6080 <vm>`), open
+http://127.0.0.1:6080, and add `-E headless=false` to a run:
+
+```bash
+inspect-robots run --embodiment yam_arena --policy yam_scripted \
+  -E scene=station -E object_jitter=0 -E headless=false -E control_hz=20 -E cam_width=320 -E cam_height=176 \
+  --instruction "put apple into the bowl" --scorer success_at_end \
+  --max-steps 600 --store-frames --log-dir ~/yam-eval/live
+```
+
+The Isaac Sim window fills the desktop, looking at the table from the front; it goes to `DISPLAY`
+instead when that is set. On a new VM the first windowed run shows a black viewport for about
+4 minutes while Isaac Sim compiles its shaders, as the first headless run does; after that the
+scene appears within seconds, and a windowed run takes only a few seconds longer than a headless one.
+The desktop listens on the VM's localhost only, so it has no password: anyone who can SSH into the
+VM can see it.
+
 ## Embodiment
 
 | | |
@@ -105,7 +132,7 @@ agent describe each joint's direction, checked against the URDF in `tests/test_u
 | `cam_height`, `cam_width` | `224` | Observed image size |
 | `wrist_cam_mount` | `link` | `link` parents the wrist cameras to the gripper; `follow` moves them there every physics step |
 | `device` | `cuda:0` | Simulation device |
-| `headless` | `true` | `false` asks for a Kit window (untested) |
+| `headless` | `true` | `false` opens the Isaac Sim window on `DISPLAY`, or on the desktop from `./setup.sh --desktop` (see [Watch a run live](#watch-a-run-live)) |
 
 From Arena directly, the embodiment is `yam_bimanual`, with scene keys `left_robot` and `right_robot`:
 
@@ -260,6 +287,7 @@ to start. With `-E object_jitter=0`:
 | `yam_arena/scripted.py`, `scoring.py` | the Inspect Robots policy `yam_scripted` (scripted demos that reach full score) and scorer `task_score` |
 | `yam_arena/urdf.py`, `ik.py`, `analysis.py`, `demo.py`, `checks.py` | URDF kinematics, IK, collision-hull distances, the scripted demo and the stage tests' PASS/FAIL records; no Isaac Sim needed |
 | `scripts/` | the stage tests, which run in Isaac Sim |
+| `scripts/desktop.sh` | the browser desktop for watching runs, which `setup.sh --desktop` installs as a service |
 | `setup.sh`, `overrides.txt` | the installer, and the override that keeps Isaac Sim's own `cv2` |
 
 ## Stage tests

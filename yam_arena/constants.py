@@ -81,6 +81,10 @@ WRIST_CAM_ROT_XYZW = (-0.0698, 0.0, 0.0, 0.9976)
 # Overview (debug) camera: behind and above the arms, pitched 30 deg down, "world" convention.
 OVERVIEW_CAM_POS = (-1.0, 0.0, 1.65)
 OVERVIEW_CAM_ROT_XYZW = (0.0, 0.2588, 0.0, 0.9659)
+# The Isaac Sim window's camera (-E headless=false): in front of the table and to the right of
+# the arms, looking back at them and the objects.
+WINDOW_EYE = (1.25, -0.75, 1.35)
+WINDOW_LOOKAT = (0.18, 0.0, 0.8)
 
 # Static collider for the top camera body. A RealSense D435 is 90 x 25 x 25 mm (W x H x D).
 # In the camera's "world"-convention frame: X = optical axis (depth), Y = image left (width),
