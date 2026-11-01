@@ -32,8 +32,11 @@ from __future__ import annotations
 
 import atexit
 import os
+import socket
 import sys
 import threading
+from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -58,6 +61,11 @@ RESET_RENDERS = 4
 OBJECT_JITTER = 0.03
 # Seconds Kit gets to shut down at interpreter exit before the process is ended anyway.
 CLOSE_TIMEOUT_S = 30.0
+# The browser desktop that `setup.sh --desktop` installs (scripts/desktop.sh): its X display, socket
+# and screen size, which the Isaac Sim window fills.
+DESKTOP_DISPLAY = ":1"
+DESKTOP_SOCKET = Path("/tmp/.X11-unix/X1")
+DESKTOP_SIZE = (1920, 1080)
 
 JOINT_GUIDE = """Two identical 6-DoF arms, prefixed left_ and right_, each with a parallel-jaw gripper.
 Each arm has its own base frame: +x forward (where the gripper points at all-zero joints), +y left,
@@ -144,6 +152,29 @@ def _close_app_at_exit() -> None:
         timer.cancel()
 
 
+def window_display(environ: Mapping[str, str]) -> str:
+    """The X display for ``-E headless=false``: ``DISPLAY`` if set, else the browser desktop's."""
+    if environ.get("DISPLAY"):
+        return environ["DISPLAY"]
+    if _desktop_is_up():
+        return DESKTOP_DISPLAY
+    raise RuntimeError(
+        "-E headless=false needs a display, and DISPLAY is not set. On a VM, install the browser desktop "
+        "with ./setup.sh --desktop (README: Watch a run live), or leave out -E headless=false."
+    )
+
+
+def _desktop_is_up() -> bool:
+    """Whether an X server answers on the desktop's socket (a stale socket file does not count)."""
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+            conn.settimeout(1.0)
+            conn.connect(str(DESKTOP_SOCKET))
+    except OSError:
+        return False
+    return True
+
+
 class YamArenaEmbodiment(EmbodimentBase):
     """Bimanual YAM in Isaac Lab-Arena, observed through the rig's overhead and wrist cameras."""
 
@@ -224,7 +255,10 @@ class YamArenaEmbodiment(EmbodimentBase):
 
             kwargs: dict[str, Any] = {"headless": self.headless, "device": self.device, "enable_cameras": True}
             if not self.headless:
-                kwargs["visualizer"] = ["kit"]  # Isaac Lab 3.0: a window needs a Kit visualizer (untested)
+                kwargs["visualizer"] = ["kit"]  # Isaac Lab 3.0: a window needs a Kit visualizer
+                os.environ["DISPLAY"] = window_display(os.environ)
+                if os.environ["DISPLAY"] == DESKTOP_DISPLAY:
+                    kwargs["window_width"], kwargs["window_height"] = DESKTOP_SIZE
             _APP = AppLauncher(**kwargs).app
             atexit.register(_close_app_at_exit)
 
