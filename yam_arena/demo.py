@@ -1,10 +1,11 @@
-"""Scripted bimanual contact demo (port of the 2.3 ``yam_sim/demo.py``). NumPy only.
+"""Scripted motions as Cartesian waypoints (port of the 2.3 ``yam_sim/demo.py``). NumPy only.
 
-The left arm picks the cube and sets it down elsewhere; the right arm presses its closed
-fingers onto the plate. Each arm follows Cartesian TCP waypoints; every control step the target
-is interpolated (smoothstep) and turned into joint targets with DLS IK on the URDF kinematics,
-then sent through the embodiment's 14-D joint action (the 2.3 demo ran closed-loop IK at
-240 Hz on the simulator's Jacobian instead).
+The tabletop demo: the left arm picks the cube and sets it down elsewhere; the right arm presses its
+closed fingers onto the plate. :func:`pick_place_waypoints` builds the same kind of plan for any object, which
+the ``yam_scripted`` policy (``yam_arena.scripted``) plays for the station's tasks and for task files.
+Each arm follows Cartesian TCP waypoints; every control step the target is interpolated (smoothstep)
+and turned into joint targets with DLS IK on the URDF kinematics, then sent through the embodiment's
+14-D joint action (the 2.3 demo ran closed-loop IK at 240 Hz on the simulator's Jacobian instead).
 
 Two deliberate differences from 2.3, both forced by the arm's reach (see ``ik.py`` tests):
 - gripper orientation ``DOWN_GRIP``: pointing straight down with the fingers closing along world
@@ -36,7 +37,7 @@ from yam_arena.constants import (
     RIGHT_BASE_POS,
     TABLE_HEIGHT,
 )
-from yam_arena.urdf import quat_xyzw_to_matrix
+from yam_arena.urdf import axis_angle_matrix, quat_xyzw_to_matrix
 
 DOWN_GRIP = ik.matrix_to_quat_xyzw(quat_xyzw_to_matrix(np.array(DOWN_XYZW)) @ np.diag([-1.0, -1.0, 1.0]))
 TIPS_ON_TABLE = TABLE_HEIGHT + PAD_TIP_PAST_TCP  # TCP height at which the pad tips touch the table
@@ -52,6 +53,13 @@ class Waypoint:
     pos: tuple[float, float, float]
     finger: float  # finger joint target (m): FINGER_OPEN .. FINGER_CLOSED
     label: str = ""
+    yaw: float = 0.0  # the downward grip turned about the vertical (rad); 0 closes the fingers along world y
+
+
+def grip_rotation(yaw: float = 0.0) -> np.ndarray:
+    """The TCP rotation of a straight-down grip turned ``yaw`` about the vertical."""
+    down = quat_xyzw_to_matrix(np.asarray(DOWN_GRIP))
+    return down if yaw == 0.0 else axis_angle_matrix(np.array([0.0, 0.0, 1.0]), yaw) @ down
 
 
 def pick_and_place(hold_s: float = 1.5) -> list[Waypoint]:
@@ -81,6 +89,33 @@ def press_plate() -> list[Waypoint]:
     ]
 
 
+def pick_place_waypoints(
+    pick: tuple[float, float, float],
+    place: tuple[float, float, float],
+    *,
+    travel_z: float,
+    yaw: float = 0.0,
+    place_yaw: float | None = None,
+    speed: float = 1.0,
+) -> list[Waypoint]:
+    """Top-down pick and place: the TCP goes to ``pick`` (world, m) with the fingers open, closes, carries at
+    ``travel_z`` (absolute height) to above ``place``, lowers there, opens and goes back up. ``yaw`` turns the
+    grip about the vertical (0 closes the fingers along world y); ``speed`` scales every segment's pace."""
+    (px, py, pz), (qx, qy, qz) = pick, place
+    end_yaw = yaw if place_yaw is None else place_yaw
+    k = 1.0 / speed
+    return [
+        Waypoint(1.5 * k, (px, py, travel_z), FINGER_OPEN, "to the object", yaw),
+        Waypoint(1.5 * k, (px, py, pz), FINGER_OPEN, "descend", yaw),
+        Waypoint(0.8 * k, (px, py, pz), FINGER_CLOSED, "close", yaw),
+        Waypoint(1.2 * k, (px, py, travel_z), FINGER_CLOSED, "lift", yaw),
+        Waypoint(1.8 * k, (qx, qy, travel_z), FINGER_CLOSED, "carry", end_yaw),
+        Waypoint(1.2 * k, (qx, qy, qz), FINGER_CLOSED, "lower", end_yaw),
+        Waypoint(0.6 * k, (qx, qy, qz), FINGER_OPEN, "release", end_yaw),
+        Waypoint(1.0 * k, (qx, qy, travel_z), FINGER_OPEN, "retreat", end_yaw),
+    ]
+
+
 class ArmPlan:
     """Smoothly interpolated TCP waypoints -> joint targets for one arm."""
 
@@ -89,7 +124,6 @@ class ArmPlan:
         self.base_pos = np.asarray(base_pos, dtype=float)
         self.q = np.array(q_start, dtype=float)
         self.start_pos, self.start_rot = ik.tcp_pose(self.q, self.base_pos)
-        self.down = quat_xyzw_to_matrix(np.asarray(DOWN_GRIP))
         self.finger_start = finger_start
         self.worst_ik_mm = 0.0
         self.worst_ik_deg = 0.0
@@ -102,17 +136,17 @@ class ArmPlan:
         """(TCP position, rotation matrix, finger, label) at time t."""
         prev_pos, prev_rot, prev_finger = self.start_pos, self.start_rot, self.finger_start
         for w in self.waypoints:
-            goal = np.asarray(w.pos, dtype=float)
+            goal, rot = np.asarray(w.pos, dtype=float), grip_rotation(w.yaw)
             if t < w.duration:
                 s = ik.smoothstep(t / w.duration)
                 return (
                     prev_pos + s * (goal - prev_pos),
-                    ik.slerp_matrix(prev_rot, self.down, s),
+                    ik.slerp_matrix(prev_rot, rot, s),
                     prev_finger + s * (w.finger - prev_finger),
                     w.label,
                 )
             t -= w.duration
-            prev_pos, prev_rot, prev_finger = goal, self.down, w.finger
+            prev_pos, prev_rot, prev_finger = goal, rot, w.finger
         return prev_pos, prev_rot, prev_finger, "done"
 
     def action7(self, t: float) -> tuple[np.ndarray, str]:

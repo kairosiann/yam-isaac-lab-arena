@@ -20,6 +20,10 @@ tasks ("put apple into the bowl", "put orange into the bowl", "put banana on the
 reports ``info["distance"]`` (object to goal, m) and ``info["success"]``, and the step on which the
 task's success criteria hold returns ``terminated=True, termination_reason="success"``.
 
+``-E task=my_task.py`` loads a task file (``yam_arena.task_file``): its objects in the station's or the
+tabletop's room, scored by the file's own ``success`` and ``distance``. Seeded resets shift every free
+object by up to ``-E object_jitter`` metres (default 0.03); ``-E object_jitter=0`` keeps the layout fixed.
+
 Importing this module is cheap: Isaac Sim starts on the first ``reset()``. One Kit app is
 started per process and reused by every instance.
 """
@@ -39,7 +43,7 @@ from inspect_robots.types import Observation, StepResult
 from inspect_robots_yam.config import DEFAULT_CAMERAS, action_box, observation_space
 from inspect_robots_yam.packing import ARM_DOF, STATE_KEY, pack, split
 
-from yam_arena import YAM_URDF, station
+from yam_arena import YAM_URDF, station, task_file
 from yam_arena.constants import ARM_JOINTS, CONTROL_HZ, FINGER_JOINTS, FINGER_OPEN, READY
 from yam_arena.rig import TABLETOP
 from yam_arena.urdf import parse_joints
@@ -91,6 +95,24 @@ in the middle, a white plate further out on the right, and a teal water bottle a
 The bowl and plate are fixed. Cameras: top_cam looks down over the arms from a stand behind them;
 left_cam and right_cam are on the wrists, looking out along the fingers.""",
 }
+# The rig without its objects, for task files (whose docstring describes what is on the table).
+ROOM_DOCS = {
+    "tabletop": """Simulated rig (Isaac Lab-Arena 0.3.1, PhysX): both arms are mounted on the near edge of a table
+0.6 m apart, left arm at +y, both facing +x across it; each arm's base frame is its own mount.
+Cameras: top_cam looks down over the arms from behind (its D435 body is a solid obstacle);
+left_cam and right_cam are on the wrists, looking out along the fingers.""",
+    "station": """Simulated rig (Isaac Lab-Arena 0.3.1, PhysX): Dream's calibrated YAM station. Both arms are mounted
+0.61 m apart at the near edge of an oak table, left arm at +y, both facing +x across it; each arm's
+base frame is its own mount. Cameras: top_cam looks down over the arms from a stand behind them;
+left_cam and right_cam are on the wrists, looking out along the fingers.""",
+}
+
+
+def environment_id(rig_name: str, task: task_file.TaskFile | None = None) -> str:
+    """The id an embodiment reports for a rig (and task file); the yam_scripted policy reads the rig from it."""
+    base = f"isaaclab-arena-0.3.1-yam-bimanual-{rig_name}"
+    return base if task is None else f"{base}-task-{task.name}"
+
 
 _APP: Any = None  # one SimulationApp per process
 
@@ -134,13 +156,22 @@ class YamArenaEmbodiment(EmbodimentBase):
         cam_width: int = 224,
         control_hz: float = CONTROL_HZ,
         wrist_cam_mount: str = "link",
-        scene: str = "tabletop",
+        scene: str | None = None,
         top_cam: str | None = None,
+        task: str | None = None,
+        object_jitter: float = OBJECT_JITTER,
     ) -> None:
+        self.task = task_file.load(task) if task else None
+        if self.task is not None and scene not in (None, self.task.scene):
+            raise ValueError(f"{self.task.path.name} sets SCENE={self.task.scene!r}; drop -E scene={scene}")
+        scene = self.task.scene if self.task is not None else (scene or "tabletop")
         if scene not in DOCS:
             raise ValueError(f"scene must be one of {tuple(DOCS)}, got {scene!r}")
         if top_cam is not None and scene != "station":
             raise ValueError("top_cam applies to scene=station")
+        self.object_jitter = float(object_jitter)
+        if not self.object_jitter >= 0:
+            raise ValueError(f"object_jitter must be >= 0 metres, got {object_jitter!r}")
         self.headless = headless
         self.device = device
         self.cam_height, self.cam_width = int(cam_height), int(cam_width)
@@ -150,22 +181,32 @@ class YamArenaEmbodiment(EmbodimentBase):
         lower, upper = _urdf_arm_limits()
         per_arm_low, per_arm_high = np.append(lower, 0.0), np.append(upper, 1.0)
         self._low, self._high = pack(per_arm_low, per_arm_low), pack(per_arm_high, per_arm_high)
+        if self.task is None:
+            scored, targets, docs = scene == "station", scene == "station", DOCS[scene]
+        else:
+            scored, targets = self.task.success is not None, False
+            docs = "\n\n".join(d for d in (JOINT_GUIDE, ROOM_DOCS[scene], self.task.docs) if d)
         self.info = EmbodimentInfo(
             name="yam_arena",
             action_space=action_box(self._low, self._high),
             observation_space=observation_space(self.cam_height, self.cam_width, DEFAULT_CAMERAS),
             control_hz=float(control_hz),
             is_simulated=True,
-            capabilities=frozenset({SEEDABLE, RESETTABLE} | ({PRIVILEGED_SUCCESS} if scene == "station" else set())),
-            supported_target_kinds=frozenset({station.TARGET_KIND}) if scene == "station" else frozenset(),
-            docs=DOCS[scene],
-            environment_id=f"isaaclab-arena-0.3.1-yam-bimanual-{self.rig.name}",
+            capabilities=frozenset({SEEDABLE, RESETTABLE} | ({PRIVILEGED_SUCCESS} if scored else set())),
+            supported_target_kinds=frozenset({station.TARGET_KIND}) if targets else frozenset(),
+            docs=docs,
+            environment_id=environment_id(self.rig.name, self.task),
+            environment_revision=None if self.task is None else self.task.sha256[:12],
         )
+        if self.task is not None:
+            task_file.register(self.info.environment_id, self.task)
         self._env: Any = None
         self._base: Any = None
         self._goal: station.Goal | None = None
         self._instruction: str | None = None
         self._t = 0.0
+        self._held = 0  # consecutive control steps a task file's success() has held
+        self._best_score = 0.0  # the best a task file's score() has reached this episode
 
     # -- Isaac lifecycle ---------------------------------------------------------------
 
@@ -195,11 +236,15 @@ class YamArenaEmbodiment(EmbodimentBase):
         emb = BimanualYamEmbodiment(
             enable_cameras=True, wrist_cam_mount=self.wrist_cam_mount, contact_sensors=False, rig=self.rig
         )
-        task = {"goal": goal} if self.scene == "station" else {}
-        self._env = make_env(emb, scene=self.scene, device=self.device, control_hz=self.info.control_hz, **task)
+        if self.task is not None:
+            scene, build = "task", {"task": self.task}
+            self._free_objects = self.task.free_objects
+        else:
+            scene, build = self.scene, ({"goal": goal} if self.scene == "station" else {})
+            self._free_objects = FREE_OBJECTS[self.scene]
+        self._env = make_env(emb, scene=scene, device=self.device, control_hz=self.info.control_hz, **build)
         self._base = self._env.unwrapped
         self._goal = goal
-        self._free_objects = FREE_OBJECTS[self.scene]
         self._torch = torch
         self._ready = torch.tensor([[*READY, 1.0, *READY, 1.0]], dtype=torch.float32, device=self._base.device)
         self._ids = {
@@ -222,18 +267,20 @@ class YamArenaEmbodiment(EmbodimentBase):
 
     def reset(self, scene: Scene, *, seed: int | None = None) -> Observation:
         """Return both arms to READY, put every object back (free ones jittered if seeded), and settle."""
-        self._ensure_sim(station.goal_for(scene.instruction, scene.target) if self.scene == "station" else None)
+        on_station = self.scene == "station" and self.task is None
+        self._ensure_sim(station.goal_for(scene.instruction, scene.target) if on_station else None)
         torch = self._torch
         base = self._base
         self._instruction = scene.instruction
+        self._held, self._best_score = 0, 0.0
         self._env.reset()
-        if seed is not None:
+        if seed is not None and self.object_jitter > 0:
             rng = np.random.default_rng(seed)
             for name in self._free_objects:
                 obj = base.scene[name]
                 pose = obj.data.default_root_pose.torch.clone()
                 pose[:, :3] += base.scene.env_origins
-                jitter = rng.uniform(-OBJECT_JITTER, OBJECT_JITTER, size=2)
+                jitter = rng.uniform(-self.object_jitter, self.object_jitter, size=2)
                 pose[:, :2] += torch.tensor(jitter, dtype=pose.dtype, device=pose.device)
                 obj.write_root_pose_to_sim_index(root_pose=pose)
                 obj.write_root_velocity_to_sim_index(root_velocity=torch.zeros_like(obj.data.default_root_vel.torch))
@@ -252,6 +299,8 @@ class YamArenaEmbodiment(EmbodimentBase):
         a = self._torch.tensor(packed, dtype=self._torch.float32, device=self._base.device).unsqueeze(0)
         self._env.step(a)
         self._t += self._base.step_dt
+        if self.task is not None:
+            return self._task_step()
         if self._goal is None:
             return StepResult(observation=self._observation())
         from yam_arena.scene import goal_status
@@ -265,6 +314,32 @@ class YamArenaEmbodiment(EmbodimentBase):
         )
 
     # -- internals ---------------------------------------------------------------------
+
+    def _task_step(self) -> StepResult:
+        """Score a task file's step: its success() must hold for success_hold_s to end the episode; its distance()
+        and score() go in ``info``."""
+        from yam_arena.scene import object_states
+
+        task = self.task
+        states = object_states(self._env, task.names)
+        info: dict[str, Any] = {}
+        success = False
+        if task.success is not None:
+            self._held = self._held + 1 if task.success(states) else 0
+            success = self._held >= max(1, round(task.success_hold_s * self.info.control_hz))
+            info["success"] = success
+        if task.distance is not None:
+            info["distance"] = float(task.distance(states))
+        if task.score is not None:
+            now = min(max(float(task.score(states)), 0.0), 1.0)
+            self._best_score = max(self._best_score, now)
+            info["score"] = self._best_score if task.score_over == "best" else now
+        return StepResult(
+            observation=self._observation(),
+            terminated=success,
+            termination_reason="success" if success else None,
+            info=info,
+        )
 
     def _observation(self) -> Observation:
         import cv2
@@ -295,5 +370,6 @@ class YamArenaEmbodiment(EmbodimentBase):
 
 
 def yam_arena_embodiment(**kwargs: Any) -> YamArenaEmbodiment:
-    """Embodiment ``yam_arena``; ``-E scene=station [-E top_cam=demo]`` selects Dream's station."""
+    """Embodiment ``yam_arena``; ``-E scene=station [-E top_cam=demo]`` selects Dream's station, ``-E task=file.py``
+    a task file, and ``-E object_jitter=0`` a fixed layout."""
     return YamArenaEmbodiment(**kwargs)

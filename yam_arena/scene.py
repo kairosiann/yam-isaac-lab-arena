@@ -10,6 +10,10 @@ water bottle, bowl and plate at Dream's poses and sizes, and the top camera's st
 (Dream's "put apple into the bowl", ...), its Arena task: ``ObjectInTask`` for the bowl,
 ``PickAndPlaceTask`` for the plate.
 
+A task file (``yam_arena.task_file``): the station's or the tabletop's room (table, lights, camera body or
+stand) with the file's objects on the table. Its success, distance and metrics are plain Python over
+:func:`object_states`.
+
 Inspect Robots owns the episode, so the env never ends or resets one by itself (no termination terms)
 and keeps no Arena metrics: a task's success is read from Arena's progress tracker, see :func:`goal_status`.
 
@@ -17,6 +21,8 @@ Physics: 240 Hz PhysX, 24 substeps per action (10 Hz control), one render per ac
 """
 
 from __future__ import annotations
+
+import math
 
 import isaaclab.sim as sim_utils
 from isaaclab.managers.recorder_manager import DatasetExportMode, RecorderManagerBaseCfg
@@ -36,7 +42,7 @@ from isaaclab_arena.utils.pose import Pose
 from isaaclab_arena.utils.usd.helpers import compute_local_bounding_box_from_usd
 from isaaclab_physx.sim.schemas import PhysxCollisionPropertiesCfg, PhysxRigidBodyPropertiesCfg
 
-from yam_arena import station
+from yam_arena import station, task_file
 from yam_arena.constants import (
     CAMERA_MAST_POS,
     CAMERA_MAST_SIZE,
@@ -251,10 +257,9 @@ def _stand_part(name: str, kind: str, size, pos, rot_xyzw) -> Object:
     )
 
 
-def station_assets(top_cam) -> dict[str, Object]:
-    """Dream's station around the arms; the camera stand follows ``top_cam`` (a ``rig.Camera``)."""
-    bottle_z = station.TABLE_TOP + station.REST_GAP + station.BOTTLE_HEIGHT / 2
-    assets = [
+def _station_room() -> list[Object]:
+    """The station's floor, lights and table."""
+    return [
         _box("floor", (200.0, 200.0, 0.02), (0.0, 0.0, station.FLOOR_Z - 0.01), STATION_FLOOR_COLOR),
         DomeLight(spawner_cfg=sim_utils.DomeLightCfg(intensity=STATION_DOME_INTENSITY, color=linear_rgb(station.SKY))),
         Object(
@@ -264,6 +269,14 @@ def station_assets(top_cam) -> dict[str, Object]:
             initial_pose=Pose(position_xyz=station.LAMP_POS),
         ),
         _box("table", station.TABLE_SIZE, station.TABLE_CENTER, STATION_TABLE_COLOR, cls=_Table),
+    ]
+
+
+def station_assets(top_cam) -> dict[str, Object]:
+    """Dream's station around the arms; the camera stand follows ``top_cam`` (a ``rig.Camera``)."""
+    bottle_z = station.TABLE_TOP + station.REST_GAP + station.BOTTLE_HEIGHT / 2
+    assets = [
+        *_station_room(),
         *(_library_item(name, item) for name, item in station.ITEMS.items()),
         Object(
             name="bottle",
@@ -303,6 +316,86 @@ def station_task(goal: station.Goal, assets: dict[str, Object], control_hz: floa
     return PickAndPlaceTask(
         obj, target, assets["table"], placement_consecutive_steps=steps, task_description=goal.instruction
     )
+
+
+# -- task files --------------------------------------------------------------------------
+
+
+def _yaw_xyzw(yaw: float) -> tuple[float, float, float, float]:
+    return (0.0, 0.0, math.sin(yaw / 2), math.cos(yaw / 2))
+
+
+def task_object(spec: task_file.ObjectSpec) -> Object:
+    """A task file's object as an Arena object: free (a rigid body with its mass) or fixed (a static collider)."""
+    if isinstance(spec, task_file.Asset):
+        item = station.Item(spec.asset, spec.xy, spec.extent, spec.mass, spec.color, spec.convex, spec.yaw)
+        return _library_item(spec.name, item)
+    look = sim_utils.PreviewSurfaceCfg(diffuse_color=linear_rgb(spec.color), roughness=0.4)
+    if spec.free:
+        body = dict(
+            rigid_props=PhysxRigidBodyPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=spec.mass),
+            collision_props=_contact_props(),
+        )
+    else:
+        body = dict(collision_props=PhysxCollisionPropertiesCfg())
+    body.update(physics_material=_grippy(), visual_material=look)
+    if isinstance(spec, task_file.Box):
+        cfg = sim_utils.CuboidCfg(size=tuple(spec.size), **body)
+    elif isinstance(spec, task_file.Cylinder):
+        cfg = sim_utils.CylinderCfg(radius=spec.radius, height=spec.height, **body)
+    else:
+        cfg = sim_utils.SphereCfg(radius=spec.radius, **body)
+    return Object(
+        name=spec.name,
+        object_type=ObjectType.RIGID if spec.free else ObjectType.BASE,
+        spawner_cfg=cfg,
+        initial_pose=Pose(position_xyz=tuple(spec.pos), rotation_xyzw=_yaw_xyzw(spec.yaw)),
+    )
+
+
+def task_room(scene: str, top_cam) -> list[Object]:
+    """What stands around a task file's objects: the station's room and camera stand, or the tabletop's."""
+    if scene == "station":
+        return [*_station_room(), *(_stand_part(name, *part) for name, part in station.camera_stand(top_cam).items())]
+    return scene_assets(objects=False)
+
+
+def build_task_environment(embodiment, task: task_file.TaskFile, control_hz: float | None = None):
+    """A task file's objects in its scene's room, for an embodiment built with that scene's rig."""
+    return IsaacLabArenaEnvironment(
+        name=f"yam_bimanual_task_{task.name}",
+        scene=Scene([*task_room(task.scene, embodiment.rig.top_cam), *(task_object(o) for o in task.objects)]),
+        embodiment=embodiment,
+        env_cfg_callback=env_cfg_callback(control_hz),
+    )
+
+
+def object_states(env, names) -> dict[str, task_file.ObjectState]:
+    """Each named object's bounding-box centre, orientation, velocities and bounds (world frame, env 0)."""
+    import numpy as np
+
+    base = env.unwrapped
+    world = base.arena_world
+    origin = base.scene.env_origins[0]
+    rigid = base.scene.rigid_objects
+
+    def arr(t) -> np.ndarray:
+        return t.detach().cpu().numpy().astype(np.float64)
+
+    out = {}
+    for name in names:
+        box = world.get_aabb_w(name)
+        moving = name in rigid
+        out[name] = task_file.ObjectState(
+            pos=arr(world.get_centroid_w(name)[0] - origin),
+            quat_xyzw=arr(world.get_pose_w(name)[0, 3:]),
+            lin_vel=arr(world.get_root_linear_velocity_w(name)[0]) if moving else np.zeros(3),
+            ang_vel=arr(world.get_root_angular_velocity_w(name)[0]) if moving else np.zeros(3),
+            low=arr(box.min_point[0] - origin),
+            high=arr(box.max_point[0] - origin),
+        )
+    return out
 
 
 # -- environments ------------------------------------------------------------------------
@@ -364,7 +457,7 @@ def make_env(embodiment, *, scene: str = "tabletop", device: str = "cuda:0", **s
     from isaaclab_arena.environments.arena_env_builder import ArenaEnvBuilder
     from isaaclab_arena.environments.arena_env_builder_cfg import ArenaEnvBuilderCfg
 
-    build = {"tabletop": build_environment, "station": build_station_environment}[scene]
+    build = {"tabletop": build_environment, "station": build_station_environment, "task": build_task_environment}[scene]
     cfg = ArenaEnvBuilderCfg(num_envs=1, solve_relations=False, device=device)
     return ArenaEnvBuilder(build(embodiment, **scene_kwargs), cfg).make_registered()
 
