@@ -42,7 +42,8 @@ if $DESKTOP; then
   if ! systemctl is-active --quiet arena-desktop.service; then
     taken=()
     (: </dev/tcp/127.0.0.1/6080) 2>/dev/null && taken+=("port 6080")
-    lock_pid=$(tr -dc '0-9' </tmp/.X1-lock 2>/dev/null || true)
+    lock_pid=
+    [[ -f /tmp/.X1-lock ]] && lock_pid=$(tr -dc '0-9' </tmp/.X1-lock)
     [[ -n $lock_pid && -d /proc/$lock_pid ]] && taken+=("display :1")
     ((${#taken[@]} == 0)) || die "${taken[*]} already in use by another program, probably another desktop" \
       "(see: sudo ss -ltnp 'sport = :6080'). Use that desktop, or stop it and re-run"
