@@ -109,6 +109,36 @@ scene appears within seconds, and a windowed run takes only a few seconds longer
 The desktop listens on the VM's localhost only, so it has no password: anyone who can SSH into the
 VM can see it.
 
+### Brev launchable
+
+`scripts/launchable.sh` is the setup script for a [Brev launchable](https://docs.nvidia.com/brev/latest/concepts/launchables),
+so a team deploys a ready VM with one link instead of running the steps above. It runs
+`./setup.sh --desktop`, adds `source ~/IsaacLab-Arena/yam.env` to `~/.bashrc`, and plays the scripted
+demo once headless and once in a window, so Isaac Sim's first start in each mode (about 4 minutes)
+happens during setup. Its output goes to `~/yam-setup.log`, which ends with `yam-setup: done` when the
+VM is ready, about 15 minutes after it boots. It runs as root or as the `ubuntu` user, and is safe to
+re-run.
+
+To create the launchable, open **Launchables** in the [Brev console](https://brev.nvidia.com) and
+choose:
+
+1. **Compute**: an L40S (`l40s-48gb.1x`), with at least 128 GB of disk; the install uses about 40 GB.
+2. **Software**: VM mode, with this setup script:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/kairosiann/yam-isaac-lab-arena/main/scripts/launchable.sh | bash
+   ```
+3. **Code**: none needed (the script clones this repository), or this repository.
+4. **Network**: nothing. The desktop (6080) and the trial reports (8300) listen on the VM's localhost
+   only and have no password, so teams reach them with `brev port-forward`; don't expose them.
+
+Then on the instance:
+
+```bash
+brev shell <instance>                 # the name `brev ls` shows
+tail -f ~/yam-setup.log               # until "yam-setup: done", then Ctrl-C and open a new shell
+inspect-robots list embodiments | grep yam_arena
+```
+
 ## Embodiment
 
 | | |
@@ -288,6 +318,7 @@ to start. With `-E object_jitter=0`:
 | `yam_arena/urdf.py`, `ik.py`, `analysis.py`, `demo.py`, `checks.py` | URDF kinematics, IK, collision-hull distances, the scripted demo and the stage tests' PASS/FAIL records; no Isaac Sim needed |
 | `scripts/` | the stage tests, which run in Isaac Sim |
 | `scripts/desktop.sh` | the browser desktop for watching runs, which `setup.sh --desktop` installs as a service |
+| `scripts/launchable.sh` | the setup script for a Brev launchable: `setup.sh --desktop`, the shell environment and two warm-up runs |
 | `setup.sh`, `overrides.txt` | the installer, and the override that keeps Isaac Sim's own `cv2` |
 
 ## Stage tests

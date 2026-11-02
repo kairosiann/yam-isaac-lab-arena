@@ -37,6 +37,17 @@ done
 if $DESKTOP; then
   command -v apt-get >/dev/null || die "--desktop needs apt-get (Ubuntu or Debian)"
   [[ -d /run/systemd/system ]] || die "--desktop needs systemd to run the desktop service"
+  # Another desktop on this VM would keep this one
+  # from starting, and the browser would show that one instead.
+  if ! systemctl is-active --quiet arena-desktop.service; then
+    taken=()
+    (: </dev/tcp/127.0.0.1/6080) 2>/dev/null && taken+=("port 6080")
+    lock_pid=
+    [[ -f /tmp/.X1-lock ]] && lock_pid=$(tr -dc '0-9' </tmp/.X1-lock)
+    [[ -n $lock_pid && -d /proc/$lock_pid ]] && taken+=("display :1")
+    ((${#taken[@]} == 0)) || die "${taken[*]} already in use by another program, probably another desktop" \
+      "(see: sudo ss -ltnp 'sport = :6080'). Use that desktop, or stop it and re-run"
+  fi
 fi
 command -v git >/dev/null || die "git is required"
 nvidia-smi >/dev/null 2>&1 || die "nvidia-smi failed: install the NVIDIA driver first"
@@ -123,6 +134,8 @@ UNIT
   sudo systemctl restart arena-desktop.service
   for _ in $(seq 30); do (: </dev/tcp/127.0.0.1/6080) 2>/dev/null && break; sleep 1; done
   (: </dev/tcp/127.0.0.1/6080) 2>/dev/null || die "the desktop did not start; see: journalctl -u arena-desktop"
+  sleep 3
+  systemctl is-active --quiet arena-desktop.service || die "the desktop keeps exiting; see: journalctl -u arena-desktop"
   echo "Desktop: on your laptop, run  brev port-forward <instance> -p 6080:6080  (or ssh -L 6080:127.0.0.1:6080)"
   echo "and open http://127.0.0.1:6080, then add -E headless=false to a run."
 fi
